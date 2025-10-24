@@ -2,6 +2,10 @@ from PIL import Image
 import os, zipfile, math, sys, tempfile, traceback, lzma, bz2, hashlib, secrets
 
 def encode_folder_to_png(folder_path, output_png, compression_method='lzma', password=None, progress_callback=None):
+    # check if tmp folder exists
+    if not os.path.exists('tmp'):
+        os.makedirs('tmp')
+    
     """Compress a folder into a PNG image file with enhanced compression
 
     Args:
@@ -16,10 +20,10 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
         if not os.path.isdir(folder_path):
             raise NotADirectoryError(f"Path is not a directory: {folder_path}")
 
-        
+
         print(f"Creating compressed archive from '{folder_path}' using {compression_method}...")
 
-        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp_zip:
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, dir='tmp') as tmp_zip:
             zip_path = tmp_zip.name
 
         try:
