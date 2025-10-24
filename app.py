@@ -17,7 +17,7 @@ from decoder import decode_png_to_folder
 # Constants for UI styling
 WINDOW_TITLE = "File Compressor"
 WINDOW_SIZE = "440x380"
-COMPRESS_WINDOW_SIZE = "400x350"
+COMPRESS_WINDOW_SIZE = "400x450"
 EXTRACT_WINDOW_SIZE = "350x200"
 TITLE_FONT = ("Arial", 20, "bold")
 LABEL_FONT = ("Arial", 12, "bold")
