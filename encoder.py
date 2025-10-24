@@ -37,7 +37,7 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
             else:
                 compression_type = zipfile.ZIP_LZMA  
 
-            with zipfile.ZipFile(zip_path, 'w', compression_type, compresslevel=9) as zipf:
+            with zipfile.ZipFile(zip_path, 'w', compression_type, compresslevel=6) as zipf:
                 total_files = sum(len(files) for _, _, files in os.walk(folder_path))
                 processed = 0
 
@@ -110,8 +110,9 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
             if size < min_size:
                 size = min_size
 
-            img = Image.new("RGBA", (size, size), color=(255, 255, 255, 255))
-            rgba_bytes = bytearray(img.tobytes())
+            # Create RGBA bytes directly for speed, instead of creating PIL image first
+            rgba_length = size * size * 4
+            rgba_bytes = bytearray(b'\xFF' * rgba_length)
 
             print(f" Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)...")
 
@@ -125,24 +126,18 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
 
             print(f"Metadata stored in {len(metadata)} alpha channels")
 
-            
+            # Embed data into RGBA bytes
             data_start_idx = len(metadata)
-            progress_step = max(1, len(data) // 100)
+            data_end_idx = data_start_idx + len(data)
+            if data_end_idx <= len(rgba_bytes):
+                rgba_bytes[data_start_idx:data_end_idx] = data
+            else:
+                # Data exceeds image size, but code should prevent this
+                raise ValueError(f"Data ({len(data)} bytes) too large for image ({len(rgba_bytes)} bytes)")
 
-            for data_idx, byte in enumerate(data):
-                
-                total_idx = data_start_idx + data_idx
-                offset = total_idx
-                if offset < len(rgba_bytes):
-                    rgba_bytes[offset] = byte
-
-                if data_idx % progress_step == 0:
-                    percent = (data_idx / len(data)) * 100
-                    if progress_callback:
-                        progress_callback(percent)
-                    print(f"\rEncoding data... {percent:.1f}%", end="")
-                    sys.stdout.flush()
-
+            # Show progress
+            if progress_callback:
+                progress_callback(100)
             print(f"\rData stored in {len(data)} RGBA channels.             ")
             img = Image.frombytes("RGBA", (size, size), rgba_bytes)
             img.save(output_png, optimize=True)
