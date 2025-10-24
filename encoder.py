@@ -111,71 +111,40 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
                 size = min_size
 
             img = Image.new("RGBA", (size, size), color=(255, 255, 255, 255))
-            pixels = img.load()
+            rgba_bytes = bytearray(img.tobytes())
 
             print(f" Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)...")
 
             print(f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}")
-            print(f"Metadata bytes: {list(metadata)}")
 
-            
-            metadata_positions = []
-
+            # Metadata in alpha channels
             for idx, b in enumerate(metadata):
-                pixel_x = idx % size
-                pixel_y = idx // size
-                if pixel_y < size:  
-                    
-                    metadata_byte = b + 1
-                    r, g, b_c, a = pixels[pixel_x, pixel_y]
-                    pixels[pixel_x, pixel_y] = (r, g, b_c, metadata_byte)
-                    metadata_positions.append((pixel_x, pixel_y, b))
-                    print(f"Set metadata pixel ({pixel_x},{pixel_y}) alpha channel to {metadata_byte} (0x{metadata_byte:02x}) for byte {b} (0x{b:02x})")
+                offset = idx * 4 + 3  # alpha
+                if offset < len(rgba_bytes):
+                    rgba_bytes[offset] = b + 1
 
-            print(f"Metadata stored in {len(metadata_positions)} pixels")
+            print(f"Metadata stored in {len(metadata)} alpha channels")
 
-            
-            data_positions = []
-            data_start_idx = len(metadata)  
+            # Data in RGBA channels
+            data_start_idx = len(metadata)
+            progress_step = max(1, len(data) // 100)
 
-            for byte_idx, byte in enumerate(data):
-                if data_start_idx < size * size * 4:
-                    channel = data_start_idx % 4
-                    pixel_x = (data_start_idx // 4) % size
-                    pixel_y = (data_start_idx // 4) // size
+            for data_idx, byte in enumerate(data):
+                # Calculate offset in rgba_bytes
+                total_idx = data_start_idx + data_idx
+                offset = total_idx
+                if offset < len(rgba_bytes):
+                    rgba_bytes[offset] = byte
 
-                    if channel == 0:  
-                        r, g, b, a = pixels[pixel_x, pixel_y]
-                        pixels[pixel_x, pixel_y] = (byte, g, b, a)
-                        data_positions.append((pixel_x, pixel_y, 'R', byte))
-                    elif channel == 1:  
-                        r, g, b, a = pixels[pixel_x, pixel_y]
-                        pixels[pixel_x, pixel_y] = (r, byte, b, a)
-                        data_positions.append((pixel_x, pixel_y, 'G', byte))
-                    elif channel == 2:  
-                        r, g, b, a = pixels[pixel_x, pixel_y]
-                        pixels[pixel_x, pixel_y] = (r, g, byte, a)
-                        data_positions.append((pixel_x, pixel_y, 'B', byte))
-                    else:  
-                        r, g, b, a = pixels[pixel_x, pixel_y]
-                        pixels[pixel_x, pixel_y] = (r, g, b, byte)
-                        data_positions.append((pixel_x, pixel_y, 'A', byte))
-                    data_start_idx += 1
+                if data_idx % progress_step == 0:
+                    percent = (data_idx / len(data)) * 100
+                    if progress_callback:
+                        progress_callback(percent)
+                    print(f"\rEncoding data... {percent:.1f}%", end="")
+                    sys.stdout.flush()
 
-            print(f"Data stored in {len(data_positions)} pixel channels")
-
-            
-            total_operations = total_pixels_needed * 4
-            progress_step = max(1, total_operations // 100)
-
-            for i in range(0, total_operations, progress_step):
-                percent = (i / total_operations) * 100
-                if progress_callback:
-                    progress_callback(percent)
-                print(f"\rEncoding data... {percent:.1f}%", end="")
-                sys.stdout.flush()
-
-            print("\rEncoding complete!             ")
+            print(f"\rData stored in {len(data)} RGBA channels.             ")
+            img = Image.frombytes("RGBA", (size, size), rgba_bytes)
             img.save(output_png, optimize=True)
             print(f"Saved compressed image as '{output_png}'")
 

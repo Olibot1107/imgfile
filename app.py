@@ -143,19 +143,43 @@ def decode_action():
 
 root = tk.Tk()
 root.title("File Compressor")
-root.geometry("400x300")
+root.geometry("440x380")
+root.resizable(False, False)
 
-tk.Label(root, text="File Compressor", font=("Arial", 16, "bold")).pack(pady=10)
+# Main frame with padding
+main_frame = ttk.Frame(root)
+main_frame.pack(padx=15, pady=15, fill="both", expand=True)
 
-tk.Button(root, text="Compress Folder to PNG", command=encode_action, width=35, height=2).pack(pady=5)
-tk.Button(root, text="Extract PNG to Folder", command=decode_action, width=35, height=2).pack(pady=5)
+# Title label with better styling
+title_label = tk.Label(main_frame, text="File Compressor", font=("Arial", 20, "bold"), fg="#2E8B57")
+title_label.pack(pady=(0, 15))
 
-progress_bar = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
+# Buttons frame
+buttons_frame = ttk.Frame(main_frame)
+buttons_frame.pack()
+
+# Style buttons
+style = ttk.Style()
+style.configure("TButton", font=("Arial", 11), padding=6)
+
+compress_btn = ttk.Button(buttons_frame, text="Compress Folder to PNG", command=encode_action, width=40)
+compress_btn.pack(pady=(0, 8))
+
+extract_btn = ttk.Button(buttons_frame, text="Extract PNG to Folder", command=decode_action, width=40)
+extract_btn.pack(pady=(8, 10))
+
+# Progress frame
+progress_frame = ttk.Frame(main_frame)
+progress_frame.pack(pady=(10, 0))
+
+progress_bar = ttk.Progressbar(progress_frame, orient="horizontal", length=380, mode="determinate")
 progress_bar.pack(pady=5)
 
-progress_label = tk.Label(root, text="Idle", font=("Arial", 10))
+progress_label = ttk.Label(progress_frame, text="Idle", font=("Arial", 11), foreground="#000080")
 progress_label.pack(pady=5)
 
-tk.Label(root, text="Made by Olibot13 and chatgpt", font=("Arial", 10)).pack(side="bottom", pady=10)
+# Footer label
+footer_label = ttk.Label(main_frame, text="Made by Olibot13 and chatgpt", font=("Arial", 9), foreground="#666666")
+footer_label.pack(side="bottom", pady=(15, 0))
 
 root.mainloop()
