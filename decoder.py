@@ -1,5 +1,5 @@
 from PIL import Image
-Image.MAX_IMAGE_PIXELS = None  
+Image.MAX_IMAGE_PIXELS = None
 
 import zipfile, io, os, sys, traceback, hashlib, getpass
 
@@ -14,39 +14,37 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
 
         width, height = img.size
         mode = img.mode
-        print(f"Image size: {width}x{height} pixels, mode: {mode}")
+        channels_per_pixel = 4 if mode == 'RGBA' else 3
+        print(f"Image size: {width}x{height} pixels, mode: {mode}, channels: {channels_per_pixel}")
 
-        
         if not os.path.exists(output_folder):
             os.makedirs(output_folder, exist_ok=True)
 
-        
         print("Collecting all channel values...")
-        all_values = []
-        for y in range(height):
-            for x in range(width):
-                if mode == 'RGBA':
-                    r, g, b, a = img.getpixel((x, y))
-                    all_values.extend([r, g, b, a])
-                else:
-                    r, g, b = img.getpixel((x, y))
-                    a = 255
-                    all_values.extend([r, g, b, a])
+        
+        all_bytes = img.tobytes()
+
+        
+        if mode != 'RGBA':
+            
+            new_bytes = bytearray()
+            for i in range(0, len(all_bytes), channels_per_pixel):
+                new_bytes.extend(all_bytes[i:i+channels_per_pixel])
+                new_bytes.append(255)  
+            all_bytes = bytes(new_bytes)
+            channels_per_pixel = 4
 
         total_pixels = width * height
-        pixels_processed = 0
-        channels_per_pixel = 4 if mode == 'RGBA' else 3
-
         print("Scanning for metadata channels...")
         metadata = ""
         metadata_channels_found = 0
         i = 0
-        while i < len(all_values) // 4:
+        while i < len(all_bytes) // 4:
             alpha_index = 4 * i + 3
-            a = all_values[alpha_index]
+            a = all_bytes[alpha_index]
             if a != 255:
                 original_byte = a - 1
-                if 0 <= original_byte <= 0x10FFFF:
+                if 0 <= original_byte <= 255:
                     metadata += chr(original_byte)
                     metadata_channels_found += 1
                     print(f"Found metadata at channel {alpha_index}: {chr(original_byte)} (0x{original_byte:02x}) from alpha {a} (0x{a:02x})")
@@ -83,7 +81,7 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
                     print(f"Password protected: {password_protected}")
                     if password_protected:
                         print(f"Stored password hash: {stored_password_hash}")
-                    print(f"Total bytes in image: {len(all_values)} bytes")
+                    print(f"Total bytes in image: {len(all_bytes)} bytes")
                 else:
                     print("Incomplete enhanced metadata found, trying legacy format...")
                     if metadata.count('\x00') >= 2:
@@ -109,7 +107,7 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
                     print(f"Expected data size: {expected_size} bytes")
                     print(f"Compression method: {compression_method}")
                     print(f"Password protected: False")
-                    print(f"Total bytes in image: {len(all_values)} bytes")
+                    print(f"Total bytes in image: {len(all_bytes)} bytes")
                 else:
                     print("Incomplete enhanced metadata found, trying legacy format...")
                     if metadata.count('\x00') >= 2:
@@ -142,11 +140,11 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
             compression_method = "unknown"
             metadata_channels_found = 0
 
-        zip_data_start = metadata_channels_found
+        start_byte = metadata_channels_found * 4
         if expected_size is not None:
             zip_data_length = int(expected_size)
         else:
-            zip_data_length = len(all_values) - zip_data_start
+            zip_data_length = len(all_bytes) - start_byte
 
         if password_protected:
             if not password:
@@ -175,7 +173,7 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
             salt = stored_password_hash.encode('utf-8')[:16].ljust(16, b'\x00')
             key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000, dklen=32)
 
-            encrypted_data = all_values[zip_data_start : zip_data_start + zip_data_length]
+            encrypted_data = all_bytes[start_byte : start_byte + zip_data_length]
 
             decrypted_data = bytearray()
             for i, byte in enumerate(encrypted_data):
@@ -187,7 +185,7 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
 
         else:
             print(f"No password protection - proceeding with extraction")
-            zip_data = bytes(all_values[zip_data_start : zip_data_start + zip_data_length])
+            zip_data = all_bytes[start_byte : start_byte + zip_data_length]
             
         zip_bytes = io.BytesIO(zip_data)
 
