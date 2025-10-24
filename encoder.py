@@ -1,7 +1,7 @@
 from PIL import Image
 import os, zipfile, math, sys, tempfile, traceback, lzma, bz2, hashlib, secrets
 
-def encode_folder_to_png(folder_path, output_png, compression_method='lzma', password=None):
+def encode_folder_to_png(folder_path, output_png, compression_method='lzma', password=None, progress_callback=None):
     """Compress a folder into a PNG image file with enhanced compression
 
     Args:
@@ -47,6 +47,8 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
                         arcname = os.path.relpath(file_path, folder_path)
                         zipf.write(file_path, arcname)
                         processed += 1
+                        if progress_callback:
+                            progress_callback( (processed / total_files) * 100, f'Adding files: {processed}/{total_files}' )
                         print(f"  Added: {arcname} ({processed}/{total_files})")
                         sys.stdout.flush()
 
@@ -62,14 +64,13 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
             password_hash = None
             if password:
                 print(f"Applying password protection...")
-                
+
                 password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()[:16]
-                
+
                 salt = password_hash.encode('utf-8')[:16].ljust(16, b'\x00')
-                
+
                 key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000, dklen=32)
 
-                
                 encrypted_data = bytearray()
                 for i, byte in enumerate(data):
                     key_byte = key[i % len(key)]
@@ -77,17 +78,23 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
 
                 data = bytes(encrypted_data)
                 print(f"Data encrypted with password (size: {len(data)} bytes)")
-            else:
-                print(f"No password protection applied")
+
+            print(f"No password protection applied" if not password else "")
 
             
-            pixels_per_byte = 4  
-            total_pixels_needed = math.ceil(len(data) / pixels_per_byte)
+            pixels_per_byte = 4
+            folder_name = os.path.basename(folder_path)
+            data_size = str(len(data))
+            compression_info = compression_method
+            password_info = password_hash if password_hash else "none"
+            metadata = f"{folder_name}\x00{data_size}\x00{compression_info}\x00{password_info}\x00".encode()
+
+            total_pixels_needed = math.ceil((len(data) + len(metadata)) / pixels_per_byte)
             size = math.ceil(math.sqrt(total_pixels_needed))
 
             
-            max_size = 5000  
-            max_data_size = 100 * 1024 * 1024  
+            max_size = 90000
+            max_data_size = 500 * 1024 * 1024
 
             if len(data) > max_data_size:
                 raise ValueError(f"Data size ({len(data)} bytes) exceeds maximum allowed size ({max_data_size} bytes). "
@@ -108,38 +115,28 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
 
             print(f" Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)...")
 
-            
-            folder_name = os.path.basename(folder_path)
-            data_size = str(len(data))
-            compression_info = compression_method
-            password_info = password_hash if password_hash else "none"
-            metadata = f"{folder_name}\x00{data_size}\x00{compression_info}\x00{password_info}\x00".encode()
-
             print(f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}")
             print(f"Metadata bytes: {list(metadata)}")
 
             
-            metadata_start_x = 0
-            metadata_start_y = 0
             metadata_positions = []
 
-            
-            
             for idx, b in enumerate(metadata):
-                pixel_x = metadata_start_x + idx
-                if pixel_x < size:  
+                pixel_x = idx % size
+                pixel_y = idx // size
+                if pixel_y < size:  
                     
                     metadata_byte = b + 1
-                    r, g, b, a = pixels[pixel_x, metadata_start_y]
-                    pixels[pixel_x, metadata_start_y] = (r, g, b, metadata_byte)
-                    metadata_positions.append((pixel_x, metadata_start_y, b))
-                    print(f"Set metadata pixel ({pixel_x},{metadata_start_y}) alpha channel to {metadata_byte} (0x{metadata_byte:02x}) for byte {b} (0x{b:02x})")
+                    r, g, b_c, a = pixels[pixel_x, pixel_y]
+                    pixels[pixel_x, pixel_y] = (r, g, b_c, metadata_byte)
+                    metadata_positions.append((pixel_x, pixel_y, b))
+                    print(f"Set metadata pixel ({pixel_x},{pixel_y}) alpha channel to {metadata_byte} (0x{metadata_byte:02x}) for byte {b} (0x{b:02x})")
 
             print(f"Metadata stored in {len(metadata_positions)} pixels")
 
             
             data_positions = []
-            data_start_idx = size * 4  
+            data_start_idx = len(metadata)  
 
             for byte_idx, byte in enumerate(data):
                 if data_start_idx < size * size * 4:
@@ -173,6 +170,8 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
 
             for i in range(0, total_operations, progress_step):
                 percent = (i / total_operations) * 100
+                if progress_callback:
+                    progress_callback(percent)
                 print(f"\rEncoding data... {percent:.1f}%", end="")
                 sys.stdout.flush()
 

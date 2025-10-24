@@ -71,11 +71,17 @@ def encode_action():
 
         def encode_worker():
             try:
-                encode_folder_to_png(folder_path, output_path, compression_method, password if password else None)
+                def progress_cb(percent, message='Encoding'):
+                    root.after(0, lambda: progress_bar.config(value=percent))
+                    root.after(0, lambda: progress_label.config(text=f"{message}: {percent:.1f}%"))
+                encode_folder_to_png(folder_path, output_path, compression_method, password if password else None, progress_cb)
                 protection_status = "with password protection" if password else "without password protection"
-                messagebox.showinfo("Success", f"Folder compressed to '{output_path}' using {compression_method.upper()} ({protection_status})!")
+                root.after(0, lambda: messagebox.showinfo("Success", f"Folder compressed to '{output_path}' using {compression_method.upper()} ({protection_status})!"))
             except Exception as e:
-                messagebox.showerror("Error", f"Compression failed: {str(e)}")
+                root.after(0, lambda: messagebox.showerror("Error", f"Compression failed: {str(e)}"))
+            finally:
+                root.after(0, lambda: progress_bar.config(value=0))
+                root.after(0, lambda: progress_label.config(text="Idle"))
 
         threading.Thread(target=encode_worker, daemon=True).start()
 
@@ -118,10 +124,16 @@ def decode_action():
 
         def decode_worker():
             try:
-                decode_png_to_folder(img_path, output_folder, password)
-                messagebox.showinfo("Success", f"Files extracted to '{output_folder}'!")
+                def progress_cb(percent, message='Extracting'):
+                    root.after(0, lambda: progress_bar.config(value=percent))
+                    root.after(0, lambda: progress_label.config(text=f"{message}: {percent:.1f}%"))
+                decode_png_to_folder(img_path, output_folder, password, progress_cb)
+                root.after(0, lambda: messagebox.showinfo("Success", f"Files extracted to '{output_folder}'!"))
             except Exception as e:
-                messagebox.showerror("Error", f"Extraction failed: {str(e)}")
+                root.after(0, lambda: messagebox.showerror("Error", f"Extraction failed: {str(e)}"))
+            finally:
+                root.after(0, lambda: progress_bar.config(value=0))
+                root.after(0, lambda: progress_label.config(text="Idle"))
 
         threading.Thread(target=decode_worker, daemon=True).start()
 
@@ -131,12 +143,18 @@ def decode_action():
 
 root = tk.Tk()
 root.title("File Compressor")
-root.geometry("400x250")
+root.geometry("400x300")
 
 tk.Label(root, text="File Compressor", font=("Arial", 16, "bold")).pack(pady=10)
 
 tk.Button(root, text="Compress Folder to PNG", command=encode_action, width=35, height=2).pack(pady=5)
 tk.Button(root, text="Extract PNG to Folder", command=decode_action, width=35, height=2).pack(pady=5)
+
+progress_bar = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
+progress_bar.pack(pady=5)
+
+progress_label = tk.Label(root, text="Idle", font=("Arial", 10))
+progress_label.pack(pady=5)
 
 tk.Label(root, text="Made by Olibot13 and chatgpt", font=("Arial", 10)).pack(side="bottom", pady=10)
 
