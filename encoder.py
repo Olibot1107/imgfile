@@ -117,20 +117,20 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
 
             print(f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}")
 
-            # Metadata in alpha channels
+            
             for idx, b in enumerate(metadata):
-                offset = idx * 4 + 3  # alpha
+                offset = idx * 4 + 3  
                 if offset < len(rgba_bytes):
                     rgba_bytes[offset] = b + 1
 
             print(f"Metadata stored in {len(metadata)} alpha channels")
 
-            # Data in RGBA channels
+            
             data_start_idx = len(metadata)
             progress_step = max(1, len(data) // 100)
 
             for data_idx, byte in enumerate(data):
-                # Calculate offset in rgba_bytes
+                
                 total_idx = data_start_idx + data_idx
                 offset = total_idx
                 if offset < len(rgba_bytes):
