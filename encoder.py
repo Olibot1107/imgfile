@@ -1,7 +1,15 @@
 from PIL import Image
 import os, zipfile, math, sys, tempfile, traceback, lzma, bz2, hashlib, secrets
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+import base64
 
-def encode_folder_to_png(folder_path, output_png, compression_method='lzma', progress_callback=None):
+# Constants for limits
+max_data_size = 500 * 1024 * 1024  # 500MB
+max_size = 90000  # pixels
+
+def encode_folder_to_png(folder_path, output_png, compression_method='lzma', progress_callback=None, enable_max_limit=True, password=None):
     if not os.path.exists('tmp'):
         os.makedirs('tmp')
 
@@ -56,14 +64,29 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
 
             print(f" ZIP size: {len(data)} bytes")
 
-            print(f"No password protection applied")
+            # Handle password protection
+            if password:
+                salt = os.urandom(16)
+                kdf = PBKDF2HMAC(
+                    algorithm=hashes.SHA256(),
+                    length=32,
+                    salt=salt,
+                    iterations=100000,
+                )
+                key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+                fernet = Fernet(key)
+                data = salt + fernet.encrypt(data)
+                password_info = "encrypted"
+                print("Password protection applied")
+            else:
+                password_info = "none"
+                print("No password protection applied")
 
 
             pixels_per_byte = 4
             folder_name = os.path.basename(folder_path)
             data_size = str(len(data))
             compression_info = compression_method
-            password_info = "none"
             metadata = f"{folder_name}\x00{data_size}\x00{compression_info}\x00{password_info}\x00".encode()
 
             meta_pixels = len(metadata)
@@ -72,17 +95,15 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
             size = math.ceil(math.sqrt(total_pixels_needed))
 
 
-            max_size = 90000
-            max_data_size = 500 * 1024 * 1024
+            if enable_max_limit:
+                if len(data) > max_data_size:
+                    raise ValueError(f"Data size ({len(data)} bytes) exceeds maximum allowed size ({max_data_size} bytes). "
+                                    f"Consider using smaller files or splitting into multiple archives.")
 
-            if len(data) > max_data_size:
-                raise ValueError(f"Data size ({len(data)} bytes) exceeds maximum allowed size ({max_data_size} bytes). "
-                               f"Consider using smaller files or splitting into multiple archives.")
-
-            if size > max_size:
-                raise ValueError(f"Image would be too large ({size}x{size} pixels). "
-                               f"Maximum allowed size is {max_size}x{max_size} pixels. "
-                               f"Data size: {len(data)} bytes")
+                if size > max_size:
+                    raise ValueError(f"Image would be too large ({size}x{size} pixels). "
+                                    f"Maximum allowed size is {max_size}x{max_size} pixels. "
+                                    f"Data size: {len(data)} bytes")
 
 
             min_size = 100

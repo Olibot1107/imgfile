@@ -2,7 +2,7 @@ import os
 import sys
 from tqdm import tqdm
 from encoder import encode_folder_to_png
-from decoder import decode_png_to_folder
+from decoder import decode_png_to_folder, get_decode_info
 
 def main():
     while True:
@@ -44,6 +44,13 @@ def compress_interactive():
     method_choice = input("Choose compression method (1-5, default 1): ").strip()
     method = methods[int(method_choice) - 1] if method_choice.isdigit() and 1 <= int(method_choice) <= 5 else 'lzma'
 
+    enable_limit = input("Enable max file limit? (y/n, default y): ").strip().lower()
+    enable_max_limit = enable_limit in ('y', 'yes', '') or enable_limit == ''
+
+    password = input("Enter password (optional, leave blank for none): ").strip()
+    if not password:
+        password = None
+
     pbar = tqdm(total=100, unit='%', desc="Starting compression")
     def progress_cb(p, msg):
         pbar.n = p
@@ -51,7 +58,7 @@ def compress_interactive():
         pbar.refresh()
 
     try:
-        encode_folder_to_png(folder_path, output_png, method, progress_callback=progress_cb)
+        encode_folder_to_png(folder_path, output_png, method, progress_callback=progress_cb, enable_max_limit=enable_max_limit, password=password)
         pbar.close()
         print("\nCompression completed successfully!")
     except Exception as e:
@@ -64,6 +71,16 @@ def extract_interactive():
     img_path = input("Enter PNG file path to extract: ").strip()
     output_folder = input("Enter output folder path: ").strip()
 
+    # Get info to check if password needed
+    folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
+    if password_info == "encrypted":
+        password = input("Enter password: ").strip()
+        if not password:
+            print("Password is required.")
+            return
+    else:
+        password = None
+
     pbar = tqdm(total=100, unit='%', desc="Starting extraction")
     def progress_cb(p, msg):
         pbar.n = p
@@ -71,7 +88,7 @@ def extract_interactive():
         pbar.refresh()
 
     try:
-        decode_png_to_folder(img_path, output_folder, progress_callback=progress_cb)
+        decode_png_to_folder(img_path, output_folder, progress_callback=progress_cb, password=password)
         pbar.close()
         print("\nExtraction completed successfully!")
     except Exception as e:

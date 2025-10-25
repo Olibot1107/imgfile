@@ -1,11 +1,11 @@
 import os
 import threading
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk, simpledialog
 import tkinter as tk
 from tqdm import tqdm
 
 from encoder import encode_folder_to_png
-from decoder import decode_png_to_folder
+from decoder import decode_png_to_folder, get_decode_info
 
 WINDOW_TITLE = "File Compressor"
 WINDOW_SIZE = "440x380"
@@ -59,9 +59,24 @@ def encode_action():
             value=value
         ).pack(anchor="w", padx=20)
 
+    enable_limit_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(
+        compress_window,
+        text="Enable max file limit (500MB, 90000px)",
+        variable=enable_limit_var
+    ).pack(anchor="w", padx=20, pady=10)
+
+    tk.Label(compress_window, text="Password (optional):", font=LABEL_FONT).pack(pady=10)
+    password_var = tk.StringVar()
+    password_entry = tk.Entry(compress_window, textvariable=password_var, show='*')
+    password_entry.pack(pady=5)
+
     def proceed_compression():
         """Validate inputs and start compression process."""
         compression_method = compression_var.get()
+        password = password_var.get().strip()
+        if not password:
+            password = None
 
         output_name = os.path.basename(folder_path) + ".png"
         output_path = filedialog.asksaveasfilename(
@@ -91,7 +106,9 @@ def encode_action():
                     folder_path,
                     output_path,
                     compression_method,
-                    progress_cb
+                    progress_cb,
+                    enable_max_limit=enable_limit_var.get(),
+                    password=password
                 )
                 pbar.close()
                 root.after(0, lambda: messagebox.showinfo(
@@ -101,7 +118,7 @@ def encode_action():
                 ))
             except Exception as e:
                 pbar.close()
-                root.after(0, lambda: messagebox.showerror(
+                root.after(0, lambda e=e: messagebox.showerror(
                     "Error", f"Compression failed: {str(e)}"))
             finally:
                 root.after(0, lambda: progress_bar.config(value=0))
@@ -139,6 +156,24 @@ def decode_action():
     if not output_folder:
         return
 
+    # Get decode info
+    folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
+
+    # Show confirmation popup
+    size_mb = total_size / (1024 * 1024)
+    protection = "Password protected" if password_info == "encrypted" else "No password protection"
+    message = f"Folder: {folder_name}\nFiles: {file_count}\nTotal size: {size_mb:.2f} MB\nCompression: {compression_method}\nProtection: {protection}\n\nAre you sure you want to extract?"
+    if not messagebox.askyesno("Confirm Extraction", message):
+        return
+
+    # Prompt for password if needed
+    password = None
+    if password_info == "encrypted":
+        password = simpledialog.askstring("Password Required", "Enter password:", show='*')
+        if not password:
+            messagebox.showerror("Error", "Password is required for extraction.")
+            return
+
     def decode_worker():
         pbar = tqdm(total=100, unit='%', desc="Extracting")
         try:
@@ -150,13 +185,13 @@ def decode_action():
                 pbar.desc = message
                 pbar.refresh()
 
-            decode_png_to_folder(img_path, output_folder, progress_cb)
+            decode_png_to_folder(img_path, output_folder, progress_cb, password)
             pbar.close()
             root.after(0, lambda: messagebox.showinfo(
                 "Success", f"Files extracted to '{output_folder}'!"))
         except Exception as e:
             pbar.close()
-            root.after(0, lambda: messagebox.showerror(
+            root.after(0, lambda e=e: messagebox.showerror(
                 "Error", f"Extraction failed: {str(e)}"))
         finally:
             root.after(0, lambda: progress_bar.config(value=0))
