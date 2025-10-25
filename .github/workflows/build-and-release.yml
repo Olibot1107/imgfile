@@ -18,12 +18,16 @@ jobs:
         include:
           - os: windows-latest
             ext: .exe
+            label: windows
           - os: ubuntu-latest
-            ext: ""   # Linux: no extension
-          - os: macos-13    # Intel macOS
-            ext: ""         # macOS: no extension for binaries
-          - os: macos-latest  # Apple Silicon
             ext: ""
+            label: linux
+          - os: macos-13       # Intel
+            ext: ""
+            label: macos-intel
+          - os: macos-latest   # ARM (M1/M2)
+            ext: ""
+            label: macos-arm
 
     steps:
     - uses: actions/checkout@v4
@@ -39,28 +43,56 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    # Windows/Linux/macOS CLI & GUI build
     - name: Build CLI
       run: |
         pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name imgfile-cli cli.py
 
     - name: Build GUI
       run: |
-        pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name imgfile-gui app.py
+        if [[ "${{ matrix.os }}" == windows* ]] || [[ "${{ matrix.os }}" == ubuntu* ]]; then
+          pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name imgfile-gui app.py
+        else
+          # macOS: make .app bundle
+          pyinstaller --windowed --hidden-import encoder --hidden-import decoder --name imgfile-gui app.py
+        fi
 
-    # ✅ Cross-platform directory listing
+    # List dist folder for debug
     - name: List dist folder
       shell: bash
       run: |
-        echo "Listing dist folder contents:"
+        echo "Contents of dist:"
         ls -l dist || dir dist
+
+    # Rename outputs to include OS label
+    - name: Rename outputs
+      shell: bash
+      run: |
+        mkdir renamed
+        # CLI
+        if [[ "${{ matrix.os }}" == macos* ]]; then
+          mv dist/imgfile-cli renamed/imgfile-cli-${{ matrix.label }}
+          mv dist/imgfile-gui.app renamed/imgfile-gui-${{ matrix.label }}.app
+        else
+          mv dist/imgfile-cli${{ matrix.ext }} renamed/imgfile-cli-${{ matrix.label }}${{ matrix.ext }}
+          mv dist/imgfile-gui${{ matrix.ext }} renamed/imgfile-gui-${{ matrix.label }}${{ matrix.ext }}
+        fi
+
+    # Create DMG for macOS GUI
+    - name: Create macOS DMG
+      if: startsWith(matrix.os, 'macos')
+      run: |
+        brew install create-dmg
+        create-dmg "renamed/imgfile-gui-${{ matrix.label }}.app" \
+                   --overwrite \
+                   --dmg-title "imgfile-gui-${{ matrix.label }}" \
+                   "renamed"
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: executables-${{ matrix.os }}
-        path: |
-          dist/imgfile-cli${{ matrix.ext }}
-          dist/imgfile-gui${{ matrix.ext }}
+        name: executables-${{ matrix.label }}
+        path: renamed/*
 
   release:
     name: Create Release
@@ -74,7 +106,10 @@ jobs:
       with:
         path: ./artifacts
 
-    - name: Create Release
+    - name: List all artifacts
+      run: ls -R ./artifacts
+
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: v1.0.0-build-${{ github.run_id }}
@@ -85,8 +120,8 @@ jobs:
           Includes executables for:
           - Windows (.exe)
           - Linux (no extension)
-          - macOS Intel (no extension)
-          - macOS Apple Silicon (no extension)
+          - macOS Intel (.app + .dmg)
+          - macOS ARM (.app + .dmg)
         files: ./artifacts/**/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
