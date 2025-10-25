@@ -19,11 +19,11 @@ jobs:
           - os: windows-latest
             ext: exe
           - os: ubuntu-latest
-            ext: bin
-          - os: macos-13  # Intel macOS
-            ext: app
-          - os: macos-latest  # Apple Silicon (M1/M2)
-            ext: app
+            ext: ""   # Linux: no extension
+          - os: macos-13    # Intel macOS
+            ext: ""         # macOS: no extension for binaries
+          - os: macos-latest  # Apple Silicon
+            ext: ""
 
     steps:
     - uses: actions/checkout@v4
@@ -47,11 +47,16 @@ jobs:
       run: |
         pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name imgfile-gui app.py
 
+    - name: List dist folder
+      run: ls -la dist
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: executables-${{ matrix.os }}
-        path: dist/*.${{ matrix.ext }}
+        path: |
+          dist/imgfile-cli${{ matrix.ext }}
+          dist/imgfile-gui${{ matrix.ext }}
 
   release:
     name: Create Release
@@ -75,9 +80,9 @@ jobs:
 
           Includes executables for:
           - Windows (.exe)
-          - Linux (.bin)
-          - macOS Intel (.app)
-          - macOS Apple Silicon (.app)
+          - Linux (no extension)
+          - macOS Intel (no extension)
+          - macOS Apple Silicon (no extension)
         files: ./artifacts/**/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
