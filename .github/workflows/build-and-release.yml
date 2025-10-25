@@ -10,7 +10,20 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest  # Build on Windows for .exe
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            ext: exe
+          - os: ubuntu-latest
+            ext: bin
+          - os: macos-13  # Intel macOS
+            ext: app
+          - os: macos-latest  # Apple Silicon (M1/M2)
+            ext: app
 
     steps:
     - uses: actions/checkout@v4
@@ -26,29 +39,45 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Build CLI exe
-      run: pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name file-compressor-cli cli.py
+    - name: Build CLI
+      run: |
+        pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name imgfile-cli cli.py
 
-    - name: Build GUI exe
-      run: pyinstaller --onefile --windowed --hidden-import encoder --hidden-import decoder --name file-compressor-gui app.py
-
-    - name: Build GUI exe (dev, with console)
-      run: pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name file-compressor-gui-dev app.py
+    - name: Build GUI
+      run: |
+        pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name imgfile-gui app.py
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: executables
-        path: dist/*.exe
+        name: executables-${{ matrix.os }}
+        path: dist/*.${{ matrix.ext }}
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
 
     - name: Create Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v1
       with:
         tag_name: v1.0.0-build-${{ github.run_id }}
         name: Automatic Build ${{ github.run_id }}
-        body: Automatic release built from commit ${{ github.sha }}
-        files: dist/*.exe
-        draft: true
+        body: |
+          Automatic release built from commit ${{ github.sha }}
+
+          Includes executables for:
+          - Windows (.exe)
+          - Linux (.bin)
+          - macOS Intel (.app)
+          - macOS Apple Silicon (.app)
+        files: ./artifacts/**/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
