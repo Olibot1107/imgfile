@@ -1,0 +1,3 @@
+@echo off
+echo Starting File Compressor...
+python app.py

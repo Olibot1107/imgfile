@@ -117,6 +117,23 @@ def extract_non_interactive(args):
     output_folder = args.output_folder
     password = args.password
 
+    # Get decode info
+    folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
+
+    # Check password
+    if password_info == "encrypted" and not password:
+        print("Password is required for extraction.")
+        return
+
+    # Display info
+    size_mb = total_size / (1024 * 1024)
+    protection = "Password protected" if password_info == "encrypted" else "No password protection"
+    print(f"Folder: {folder_name}")
+    print(f"Files: {file_count}")
+    print(f"Total size: {size_mb:.2f} MB")
+    print(f"Compression: {compression_method}")
+    print(f"Protection: {protection}")
+
     pbar = tqdm(total=100, unit='%', desc="Starting extraction")
     def progress_cb(p, msg):
         pbar.n = p
@@ -139,6 +156,20 @@ def extract_interactive():
 
     # Get info to check if password needed
     folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
+
+    # Display info and confirm
+    size_mb = total_size / (1024 * 1024)
+    protection = "Password protected" if password_info == "encrypted" else "No password protection"
+    print(f"\nFolder: {folder_name}")
+    print(f"Files: {file_count}")
+    print(f"Total size: {size_mb:.2f} MB")
+    print(f"Compression: {compression_method}")
+    print(f"Protection: {protection}")
+    confirm = input("\nAre you sure you want to extract? (y/n): ").strip().lower()
+    if confirm not in ('y', 'yes'):
+        print("Extraction cancelled.")
+        return
+
     if password_info == "encrypted":
         password = input("Enter password: ").strip()
         if not password:
