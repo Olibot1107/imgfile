@@ -32,6 +32,9 @@ jobs:
     - name: Build GUI exe
       run: pyinstaller --onefile --windowed --hidden-import encoder --hidden-import decoder --name file-compressor-gui app.py
 
+    - name: Build GUI exe (dev, with console)
+      run: pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name file-compressor-gui-dev app.py
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
