@@ -4,7 +4,6 @@ Image.MAX_IMAGE_PIXELS = None
 import zipfile, io, os, sys, traceback
 
 def decode_png_to_folder(img_path, output_folder, progress_callback=None):
-    """Extract files from a compressed PNG image with enhanced decoding"""
     try:
         if not os.path.exists(img_path):
             raise FileNotFoundError(f"Image not found: {img_path}")
@@ -69,7 +68,7 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None):
                     folder_name = parts[0]
                     data_size_str = parts[1]
                     compression_method = parts[2]
-                    # Skip password info for removed feature
+                    
                     expected_size = int(data_size_str)
                     print(f"Original folder: {folder_name}")
                     print(f"Expected data size: {expected_size} bytes")

@@ -1,11 +1,3 @@
-"""
-File Compressor GUI Application
-
-A graphical user interface application for compressing folders into PNG images
-and extracting them back. Uses Tkinter for the interface and custom
-encoder/decoder modules for compression, with tqdm for enhanced progress feedback.
-"""
-
 import os
 import threading
 from tkinter import filedialog, messagebox, ttk
@@ -15,26 +7,21 @@ from tqdm import tqdm
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder
 
-
-# Constants for UI styling and configuration
 WINDOW_TITLE = "File Compressor"
 WINDOW_SIZE = "440x380"
 COMPRESS_WINDOW_SIZE = "400x450"
 EXTRACT_WINDOW_SIZE = "350x200"
 
-# Font definitions
 TITLE_FONT = ("Arial", 20, "bold")
 LABEL_FONT = ("Arial", 12, "bold")
 SMALL_FONT = ("Arial", 8, "italic")
 BUTTON_FONT = ("Arial", 11)
 FOOTER_FONT = ("Arial", 9)
 
-# Color definitions
 TITLE_COLOR = "#00FF6E"
 STATUS_COLOR = "#0000FF"
 FOOTER_COLOR = "#666666"
 
-# Compression methods with descriptions
 COMPRESSION_METHODS = [
     ("LZMA (Best compression)", "lzma"),
     ("BZIP2 (Good compression)", "bz2"),
@@ -53,14 +40,12 @@ def encode_action():
     if not folder_path:
         return
 
-    # Create compression settings dialog
     compress_window = tk.Toplevel(root)
     compress_window.title("Compression Settings")
     compress_window.geometry(COMPRESS_WINDOW_SIZE)
     compress_window.transient(root)
     compress_window.grab_set()
 
-    # Compression method selection
     tk.Label(compress_window, text="Select Compression Method:",
              font=LABEL_FONT).pack(pady=10)
 
@@ -78,7 +63,6 @@ def encode_action():
         """Validate inputs and start compression process."""
         compression_method = compression_var.get()
 
-        # Output file selection
         output_name = os.path.basename(folder_path) + ".png"
         output_path = filedialog.asksaveasfilename(
             defaultextension=".png",
@@ -92,7 +76,6 @@ def encode_action():
 
         compress_window.destroy()
 
-        # Background compression worker
         def encode_worker():
             pbar = tqdm(total=100, unit='%', desc="Compressing")
             try:
@@ -126,7 +109,6 @@ def encode_action():
 
         threading.Thread(target=encode_worker, daemon=True).start()
 
-    # Dialog buttons
     tk.Button(
         compress_window,
         text="Compress",
@@ -157,7 +139,6 @@ def decode_action():
     if not output_folder:
         return
 
-    # Background extraction worker
     def decode_worker():
         pbar = tqdm(total=100, unit='%', desc="Extracting")
         try:
@@ -193,7 +174,6 @@ def create_main_window():
     root.geometry(WINDOW_SIZE)
     root.resizable(False, False)
 
-    # Main container
     main_frame = ttk.Frame(root)
     main_frame.pack(padx=15, pady=15, fill="both", expand=True)
 
@@ -206,15 +186,12 @@ def create_main_window():
     )
     title_label.pack(pady=(0, 15))
 
-    # Buttons container
     buttons_frame = ttk.Frame(main_frame)
     buttons_frame.pack()
 
-    # Apply button styling
     style = ttk.Style()
     style.configure("TButton", font=BUTTON_FONT, padding=6)
 
-    # Action buttons
     compress_btn = ttk.Button(
         buttons_frame,
         text="Compress Folder to PNG",
@@ -231,7 +208,6 @@ def create_main_window():
     )
     extract_btn.pack(pady=(8, 10))
 
-    # Progress section
     progress_frame = ttk.Frame(main_frame)
     progress_frame.pack(pady=(10, 0))
 
@@ -251,7 +227,6 @@ def create_main_window():
     )
     progress_label.pack(pady=5)
 
-    # Footer
     footer_label = ttk.Label(
         main_frame,
         text="Made by Olibot13 and ChatGPT",

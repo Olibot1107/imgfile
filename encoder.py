@@ -2,17 +2,9 @@ from PIL import Image
 import os, zipfile, math, sys, tempfile, traceback, lzma, bz2, hashlib, secrets
 
 def encode_folder_to_png(folder_path, output_png, compression_method='lzma', progress_callback=None):
-    # check if tmp folder exists
     if not os.path.exists('tmp'):
         os.makedirs('tmp')
     
-    """Compress a folder into a PNG image file with enhanced compression
-
-    Args:
-        folder_path: Path to the folder to compress
-        output_png: Output PNG file path
-        compression_method: Compression algorithm to use ('lzma', 'bz2', 'zlib', 'zip_lzma', 'zip_bz2')
-    """
     try:
         if not os.path.exists(folder_path):
             raise FileNotFoundError(f"Folder not found: {folder_path}")
@@ -97,7 +89,7 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
             if size < min_size:
                 size = min_size
 
-            # Create RGBA bytes directly for speed, instead of creating PIL image first
+            
             rgba_length = size * size * 4
             rgba_bytes = bytearray(b'\xFF' * rgba_length)
 
@@ -113,16 +105,16 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
 
             print(f"Metadata stored in {len(metadata)} alpha channels")
 
-            # Embed data into RGBA bytes
+            
             data_start_idx = len(metadata) * pixels_per_byte
             data_end_idx = data_start_idx + len(data)
             if data_end_idx <= len(rgba_bytes):
                 rgba_bytes[data_start_idx:data_end_idx] = data
             else:
-                # Data exceeds image size, but code should prevent this
+                
                 raise ValueError(f"Data ({len(data)} bytes) too large for image ({len(rgba_bytes)} bytes)")
 
-            # Show progress
+            
             if progress_callback:
                 progress_callback(100)
             print(f"\rData stored in {len(data)} RGBA channels.             ")
