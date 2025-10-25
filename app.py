@@ -60,36 +60,11 @@ def encode_action():
     for text, value in methods:
         ttk.Radiobutton(compress_window, text=text, variable=compression_var, value=value).pack(anchor="w", padx=20)
 
-    # Password protection
-    tk.Label(compress_window, text="Password Protection (Optional):", font=LABEL_FONT).pack(pady=10)
 
-    password_var = tk.StringVar()
-    password_confirm_var = tk.StringVar()
-
-    tk.Label(compress_window, text="Password:").pack(anchor="w", padx=20)
-    password_entry = tk.Entry(compress_window, textvariable=password_var, show="*", width=30)
-    password_entry.pack(padx=20, pady=2)
-
-    tk.Label(compress_window, text="Confirm Password:").pack(anchor="w", padx=20)
-    password_confirm_entry = tk.Entry(compress_window, textvariable=password_confirm_var, show="*", width=30)
-    password_confirm_entry.pack(padx=20, pady=2)
-
-    tk.Label(compress_window, text="Leave blank for no password protection", font=SMALL_FONT).pack(pady=5)
 
     def proceed_compression():
         """Validates inputs and starts the compression process."""
         compression_method = compression_var.get()
-        password = password_var.get()
-        password_confirm = password_confirm_var.get()
-
-        # Validation
-        if password != password_confirm:
-            messagebox.showerror("Error", "Passwords do not match!")
-            return
-
-        if password and len(password) < 4:
-            messagebox.showerror("Error", "Password must be at least 4 characters long!")
-            return
 
         # Output file selection
         output_name = os.path.basename(folder_path) + ".png"
@@ -116,12 +91,10 @@ def encode_action():
                     folder_path,
                     output_path,
                     compression_method,
-                    password if password else None,
                     progress_cb
                 )
-                protection_status = "with password protection" if password else "without password protection"
                 root.after(0, lambda: messagebox.showinfo("Success",
-                    f"Folder compressed to '{output_path}' using {compression_method.upper()} ({protection_status})!"
+                    f"Folder compressed to '{output_path}' using {compression_method.upper()}!"
                 ))
             except Exception as e:
                 root.after(0, lambda: messagebox.showerror("Error", f"Compression failed: {str(e)}"))
@@ -152,49 +125,22 @@ def decode_action():
     if not output_folder:
         return
 
-    # Create extraction settings window
-    extract_window = tk.Toplevel(root)
-    extract_window.title("Extraction Settings")
-    extract_window.geometry(EXTRACT_WINDOW_SIZE)
-    extract_window.transient(root)
-    extract_window.grab_set()
+    # Background extraction
+    def decode_worker():
+        try:
+            def progress_cb(percent, message='Extracting'):
+                root.after(0, lambda: progress_bar.config(value=percent))
+                root.after(0, lambda: progress_label.config(text=f"{message}: {percent:.1f}%"))
 
-    tk.Label(extract_window, text="Password (if required):", font=LABEL_FONT).pack(pady=10)
+            decode_png_to_folder(img_path, output_folder, progress_cb)
+            root.after(0, lambda: messagebox.showinfo("Success", f"Files extracted to '{output_folder}'!"))
+        except Exception as e:
+            root.after(0, lambda: messagebox.showerror("Error", f"Extraction failed: {str(e)}"))
+        finally:
+            root.after(0, lambda: progress_bar.config(value=0))
+            root.after(0, lambda: progress_label.config(text="Idle"))
 
-    password_var = tk.StringVar()
-
-    tk.Label(extract_window, text="Password:").pack(anchor="w", padx=20)
-    password_entry = tk.Entry(extract_window, textvariable=password_var, show="*", width=30)
-    password_entry.pack(padx=20, pady=2)
-
-    tk.Label(extract_window, text="Leave blank if no password protection", font=SMALL_FONT).pack(pady=5)
-
-    def proceed_extraction():
-        """Starts the extraction process."""
-        password = password_var.get() if password_var.get() else None
-
-        extract_window.destroy()
-
-        # Background extraction
-        def decode_worker():
-            try:
-                def progress_cb(percent, message='Extracting'):
-                    root.after(0, lambda: progress_bar.config(value=percent))
-                    root.after(0, lambda: progress_label.config(text=f"{message}: {percent:.1f}%"))
-
-                decode_png_to_folder(img_path, output_folder, password, progress_cb)
-                root.after(0, lambda: messagebox.showinfo("Success", f"Files extracted to '{output_folder}'!"))
-            except Exception as e:
-                root.after(0, lambda: messagebox.showerror("Error", f"Extraction failed: {str(e)}"))
-            finally:
-                root.after(0, lambda: progress_bar.config(value=0))
-                root.after(0, lambda: progress_label.config(text="Idle"))
-
-        threading.Thread(target=decode_worker, daemon=True).start()
-
-    # Buttons
-    tk.Button(extract_window, text="Extract", command=proceed_extraction, width=15).pack(pady=15)
-    tk.Button(extract_window, text="Cancel", command=extract_window.destroy, width=15).pack(pady=5)
+    threading.Thread(target=decode_worker, daemon=True).start()
 
 
 # Main application setup

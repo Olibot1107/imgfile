@@ -1,9 +1,9 @@
 from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
-import zipfile, io, os, sys, traceback, hashlib, getpass
+import zipfile, io, os, sys, traceback
 
-def decode_png_to_folder(img_path, output_folder, password=None, progress_callback=None):
+def decode_png_to_folder(img_path, output_folder, progress_callback=None):
     """Extract files from a compressed PNG image with enhanced decoding"""
     try:
         if not os.path.exists(img_path):
@@ -60,27 +60,20 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
         print(f"\rMetadata extraction complete. Found {metadata_channels_found} metadata channels")
         print(f"Raw metadata: {repr(metadata)}")
 
-        
-        password_protected = False
-        stored_password_hash = None
 
         try:
             if '\x00' in metadata and metadata.count('\x00') >= 4:
-                
+
                 parts = metadata.split('\x00', 4)
                 if len(parts) >= 4:
                     folder_name = parts[0]
                     data_size_str = parts[1]
                     compression_method = parts[2]
-                    stored_password_hash = parts[3]
+                    # Skip password info for removed feature
                     expected_size = int(data_size_str)
-                    password_protected = stored_password_hash != "none"
                     print(f"Original folder: {folder_name}")
                     print(f"Expected data size: {expected_size} bytes")
                     print(f"Compression method: {compression_method}")
-                    print(f"Password protected: {password_protected}")
-                    if password_protected:
-                        print(f"Stored password hash: {stored_password_hash}")
                     print(f"Total bytes in image: {len(all_bytes)} bytes")
                 else:
                     print("Incomplete enhanced metadata found, trying legacy format...")
@@ -106,7 +99,6 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
                     print(f"Original folder: {folder_name}")
                     print(f"Expected data size: {expected_size} bytes")
                     print(f"Compression method: {compression_method}")
-                    print(f"Password protected: False")
                     print(f"Total bytes in image: {len(all_bytes)} bytes")
                 else:
                     print("Incomplete enhanced metadata found, trying legacy format...")
@@ -146,46 +138,8 @@ def decode_png_to_folder(img_path, output_folder, password=None, progress_callba
         else:
             zip_data_length = len(all_bytes) - start_byte
 
-        if password_protected:
-            if not password:
-
-                print(f"This image is password protected!")
-                password = getpass.getpass("Enter password: ")
-
-                if not password:
-                    print(f"No password provided. Cannot decrypt protected image.")
-                    print(f"Hint: The image contains garbled data without the correct password.")
-                    return
-
-
-            entered_password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()[:16]
-            if entered_password_hash != stored_password_hash:
-                print(f"Incorrect password! Access denied.")
-                print(f"Hint: Without the correct password, the image contains only random/garbled data.")
-                print(f"Expected hash: {stored_password_hash}")
-                print(f"Entered hash: {entered_password_hash}")
-                return
-
-            print(f"Password verified! Decrypting data...")
-
-
-
-            salt = stored_password_hash.encode('utf-8')[:16].ljust(16, b'\x00')
-            key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000, dklen=32)
-
-            encrypted_data = all_bytes[start_byte : start_byte + zip_data_length]
-
-            decrypted_data = bytearray()
-            for i, byte in enumerate(encrypted_data):
-                key_byte = key[i % len(key)]
-                decrypted_data.append(byte ^ key_byte)
-
-            zip_data = decrypted_data
-            print(f"Data decrypted successfully (size: {len(zip_data)} bytes)")
-
-        else:
-            print(f"No password protection - proceeding with extraction")
-            zip_data = all_bytes[start_byte : start_byte + zip_data_length]
+        print(f"No password protection - proceeding with extraction")
+        zip_data = all_bytes[start_byte : start_byte + zip_data_length]
             
         zip_bytes = io.BytesIO(zip_data)
 

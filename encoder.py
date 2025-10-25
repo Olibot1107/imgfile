@@ -1,7 +1,7 @@
 from PIL import Image
 import os, zipfile, math, sys, tempfile, traceback, lzma, bz2, hashlib, secrets
 
-def encode_folder_to_png(folder_path, output_png, compression_method='lzma', password=None, progress_callback=None):
+def encode_folder_to_png(folder_path, output_png, compression_method='lzma', progress_callback=None):
     # check if tmp folder exists
     if not os.path.exists('tmp'):
         os.makedirs('tmp')
@@ -64,36 +64,19 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
 
             print(f" ZIP size: {len(data)} bytes")
 
-            
-            password_hash = None
-            if password:
-                print(f"Applying password protection...")
-
-                password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()[:16]
-
-                salt = password_hash.encode('utf-8')[:16].ljust(16, b'\x00')
-
-                key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000, dklen=32)
-
-                encrypted_data = bytearray()
-                for i, byte in enumerate(data):
-                    key_byte = key[i % len(key)]
-                    encrypted_data.append(byte ^ key_byte)
-
-                data = bytes(encrypted_data)
-                print(f"Data encrypted with password (size: {len(data)} bytes)")
-
-            print(f"No password protection applied" if not password else "")
+            print(f"No password protection applied")
 
             
             pixels_per_byte = 4
             folder_name = os.path.basename(folder_path)
             data_size = str(len(data))
             compression_info = compression_method
-            password_info = password_hash if password_hash else "none"
+            password_info = "none"
             metadata = f"{folder_name}\x00{data_size}\x00{compression_info}\x00{password_info}\x00".encode()
 
-            total_pixels_needed = math.ceil((len(data) + len(metadata)) / pixels_per_byte)
+            meta_pixels = len(metadata)
+            data_pixels = math.ceil(len(data) / pixels_per_byte)
+            total_pixels_needed = meta_pixels + data_pixels
             size = math.ceil(math.sqrt(total_pixels_needed))
 
             
@@ -131,7 +114,7 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pas
             print(f"Metadata stored in {len(metadata)} alpha channels")
 
             # Embed data into RGBA bytes
-            data_start_idx = len(metadata)
+            data_start_idx = len(metadata) * pixels_per_byte
             data_end_idx = data_start_idx + len(data)
             if data_end_idx <= len(rgba_bytes):
                 rgba_bytes[data_start_idx:data_end_idx] = data

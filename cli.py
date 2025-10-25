@@ -43,11 +43,8 @@ def compress_interactive():
     method_choice = input("Choose compression method (1-5, default 1): ").strip()
     method = methods[int(method_choice) - 1] if method_choice.isdigit() and 1 <= int(method_choice) <= 5 else 'lzma'
 
-    password = input("Enter password (leave blank for no password): ").strip()
-    password = password if password else None
-
     try:
-        encode_folder_to_png(folder_path, output_png, method, password, progress_callback=print_progress)
+        encode_folder_to_png(folder_path, output_png, method, progress_callback=print_progress)
         print("\nCompression completed successfully!")
     except Exception as e:
         print(f"\nCompression failed: {e}")
@@ -57,11 +54,9 @@ def extract_interactive():
     print("=====================")
     img_path = input("Enter PNG file path to extract: ").strip()
     output_folder = input("Enter output folder path: ").strip()
-    password = input("Enter password (leave blank if not protected): ").strip()
-    password = password if password else None
 
     try:
-        decode_png_to_folder(img_path, output_folder, password, progress_callback=print_progress)
+        decode_png_to_folder(img_path, output_folder, progress_callback=print_progress)
         print("\nExtraction completed successfully!")
     except Exception as e:
         print(f"\nExtraction failed: {e}")
