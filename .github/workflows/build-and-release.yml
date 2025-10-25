@@ -27,10 +27,10 @@ jobs:
         pip install pyinstaller
 
     - name: Build CLI exe
-      run: pyinstaller --onefile --name file-compressor-cli cli.py
+      run: pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name file-compressor-cli cli.py
 
     - name: Build GUI exe
-      run: pyinstaller --onefile --windowed --name file-compressor-gui app.py
+      run: pyinstaller --onefile --windowed --hidden-import encoder --hidden-import decoder --name file-compressor-gui app.py
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -46,6 +46,6 @@ jobs:
         name: Automatic Build ${{ github.run_id }}
         body: Automatic release built from commit ${{ github.sha }}
         files: dist/*.exe
-        prerelease: true
+        draft: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
