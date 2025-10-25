@@ -1,18 +1,20 @@
 # how to use
 
-## GUI
-
-fist run
+First, install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-then to run the app do 
+
+## GUI
+
+To run the graphical application:
 ```bash
-python app.py  
+python app.py
 ```
 
 ## CLI
 
+To run the command-line interface:
 ```bash
 python cli.py
 ```

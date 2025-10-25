@@ -1,44 +1,59 @@
 """
-File Compressor Application
+File Compressor GUI Application
 
-A GUI application for compressing folders into PNG images and extracting them back.
-Uses Tkinter for the interface and custom encoder/decoder modules for compression.
+A graphical user interface application for compressing folders into PNG images
+and extracting them back. Uses Tkinter for the interface and custom
+encoder/decoder modules for compression, with tqdm for enhanced progress feedback.
 """
 
 import os
 import threading
 from tkinter import filedialog, messagebox, ttk
 import tkinter as tk
+from tqdm import tqdm
 
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder
 
 
-# Constants for UI styling
+# Constants for UI styling and configuration
 WINDOW_TITLE = "File Compressor"
 WINDOW_SIZE = "440x380"
 COMPRESS_WINDOW_SIZE = "400x450"
 EXTRACT_WINDOW_SIZE = "350x200"
+
+# Font definitions
 TITLE_FONT = ("Arial", 20, "bold")
 LABEL_FONT = ("Arial", 12, "bold")
 SMALL_FONT = ("Arial", 8, "italic")
 BUTTON_FONT = ("Arial", 11)
 FOOTER_FONT = ("Arial", 9)
-TITLE_COLOR = "#2E8B57"
-STATUS_COLOR = "#000080"
+
+# Color definitions
+TITLE_COLOR = "#00FF6E"
+STATUS_COLOR = "#0000FF"
 FOOTER_COLOR = "#666666"
+
+# Compression methods with descriptions
+COMPRESSION_METHODS = [
+    ("LZMA (Best compression)", "lzma"),
+    ("BZIP2 (Good compression)", "bz2"),
+    ("ZLIB (Fast compression)", "zlib"),
+    ("ZIP-LZMA (Compatible)", "zip_lzma"),
+    ("ZIP-BZIP2 (Compatible)", "zip_bz2"),
+]
 
 
 def encode_action():
     """
-    Handles the compression action: selects a folder, chooses compression settings,
-    and initiates the encoding process in a background thread.
+    Handle the compression action: select folder, choose settings,
+    and initiate encoding in background thread.
     """
     folder_path = filedialog.askdirectory(title="Select folder to compress")
     if not folder_path:
         return
 
-    # Create compression settings window
+    # Create compression settings dialog
     compress_window = tk.Toplevel(root)
     compress_window.title("Compression Settings")
     compress_window.geometry(COMPRESS_WINDOW_SIZE)
@@ -46,24 +61,21 @@ def encode_action():
     compress_window.grab_set()
 
     # Compression method selection
-    tk.Label(compress_window, text="Select Compression Method:", font=LABEL_FONT).pack(pady=10)
+    tk.Label(compress_window, text="Select Compression Method:",
+             font=LABEL_FONT).pack(pady=10)
 
     compression_var = tk.StringVar(value="lzma")
 
-    methods = [
-        ("LZMA (Best compression)", "lzma"),
-        ("BZIP2 (Good compression)", "bz2"),
-        ("ZLIB (Fast compression)", "zlib"),
-        ("ZIP-LZMA (Compatible)", "zip_lzma"),
-        ("ZIP-BZIP2 (Compatible)", "zip_bz2"),
-    ]
-    for text, value in methods:
-        ttk.Radiobutton(compress_window, text=text, variable=compression_var, value=value).pack(anchor="w", padx=20)
-
-
+    for text, value in COMPRESSION_METHODS:
+        ttk.Radiobutton(
+            compress_window,
+            text=text,
+            variable=compression_var,
+            value=value
+        ).pack(anchor="w", padx=20)
 
     def proceed_compression():
-        """Validates inputs and starts the compression process."""
+        """Validate inputs and start compression process."""
         compression_method = compression_var.get()
 
         # Output file selection
@@ -80,12 +92,17 @@ def encode_action():
 
         compress_window.destroy()
 
-        # Background compression
+        # Background compression worker
         def encode_worker():
+            pbar = tqdm(total=100, unit='%', desc="Compressing")
             try:
                 def progress_cb(percent, message='Encoding'):
                     root.after(0, lambda: progress_bar.config(value=percent))
-                    root.after(0, lambda: progress_label.config(text=f"{message}: {percent:.1f}%"))
+                    root.after(0, lambda: progress_label.config(
+                        text=f"{message}: {percent:.1f}%"))
+                    pbar.n = percent
+                    pbar.desc = message
+                    pbar.refresh()
 
                 encode_folder_to_png(
                     folder_path,
@@ -93,26 +110,41 @@ def encode_action():
                     compression_method,
                     progress_cb
                 )
-                root.after(0, lambda: messagebox.showinfo("Success",
-                    f"Folder compressed to '{output_path}' using {compression_method.upper()}!"
+                pbar.close()
+                root.after(0, lambda: messagebox.showinfo(
+                    "Success",
+                    f"Folder compressed to '{output_path}' "
+                    f"using {compression_method.upper()}!"
                 ))
             except Exception as e:
-                root.after(0, lambda: messagebox.showerror("Error", f"Compression failed: {str(e)}"))
+                pbar.close()
+                root.after(0, lambda: messagebox.showerror(
+                    "Error", f"Compression failed: {str(e)}"))
             finally:
                 root.after(0, lambda: progress_bar.config(value=0))
                 root.after(0, lambda: progress_label.config(text="Idle"))
 
         threading.Thread(target=encode_worker, daemon=True).start()
 
-    # Buttons
-    tk.Button(compress_window, text="Compress", command=proceed_compression, width=15).pack(pady=15)
-    tk.Button(compress_window, text="Cancel", command=compress_window.destroy, width=15).pack(pady=5)
+    # Dialog buttons
+    tk.Button(
+        compress_window,
+        text="Compress",
+        command=proceed_compression,
+        width=15
+    ).pack(pady=15)
+    tk.Button(
+        compress_window,
+        text="Cancel",
+        command=compress_window.destroy,
+        width=15
+    ).pack(pady=5)
 
 
 def decode_action():
     """
-    Handles the extraction action: selects a PNG file and output folder,
-    prompts for password if needed, and initiates the decoding process in a background thread.
+    Handle the extraction action: select PNG and output folder,
+    then initiate decoding in background thread.
     """
     img_path = filedialog.askopenfilename(
         title="Select compressed PNG file",
@@ -125,17 +157,26 @@ def decode_action():
     if not output_folder:
         return
 
-    # Background extraction
+    # Background extraction worker
     def decode_worker():
+        pbar = tqdm(total=100, unit='%', desc="Extracting")
         try:
             def progress_cb(percent, message='Extracting'):
                 root.after(0, lambda: progress_bar.config(value=percent))
-                root.after(0, lambda: progress_label.config(text=f"{message}: {percent:.1f}%"))
+                root.after(0, lambda: progress_label.config(
+                    text=f"{message}: {percent:.1f}%"))
+                pbar.n = percent
+                pbar.desc = message
+                pbar.refresh()
 
             decode_png_to_folder(img_path, output_folder, progress_cb)
-            root.after(0, lambda: messagebox.showinfo("Success", f"Files extracted to '{output_folder}'!"))
+            pbar.close()
+            root.after(0, lambda: messagebox.showinfo(
+                "Success", f"Files extracted to '{output_folder}'!"))
         except Exception as e:
-            root.after(0, lambda: messagebox.showerror("Error", f"Extraction failed: {str(e)}"))
+            pbar.close()
+            root.after(0, lambda: messagebox.showerror(
+                "Error", f"Extraction failed: {str(e)}"))
         finally:
             root.after(0, lambda: progress_bar.config(value=0))
             root.after(0, lambda: progress_label.config(text="Idle"))
@@ -143,46 +184,84 @@ def decode_action():
     threading.Thread(target=decode_worker, daemon=True).start()
 
 
-# Main application setup
-root = tk.Tk()
-root.title(WINDOW_TITLE)
-root.geometry(WINDOW_SIZE)
-root.resizable(False, False)
+def create_main_window():
+    """Create and configure the main application window."""
+    global root, progress_bar, progress_label
 
-# Main frame
-main_frame = ttk.Frame(root)
-main_frame.pack(padx=15, pady=15, fill="both", expand=True)
+    root = tk.Tk()
+    root.title(WINDOW_TITLE)
+    root.geometry(WINDOW_SIZE)
+    root.resizable(False, False)
 
-# Title
-title_label = tk.Label(main_frame, text="File Compressor", font=TITLE_FONT, fg=TITLE_COLOR)
-title_label.pack(pady=(0, 15))
+    # Main container
+    main_frame = ttk.Frame(root)
+    main_frame.pack(padx=15, pady=15, fill="both", expand=True)
 
-# Buttons frame
-buttons_frame = ttk.Frame(main_frame)
-buttons_frame.pack()
+    # Application title
+    title_label = tk.Label(
+        main_frame,
+        text="File Compressor",
+        font=TITLE_FONT,
+        fg=TITLE_COLOR
+    )
+    title_label.pack(pady=(0, 15))
 
-# Button styling
-style = ttk.Style()
-style.configure("TButton", font=BUTTON_FONT, padding=6)
+    # Buttons container
+    buttons_frame = ttk.Frame(main_frame)
+    buttons_frame.pack()
 
-compress_btn = ttk.Button(buttons_frame, text="Compress Folder to PNG", command=encode_action, width=40)
-compress_btn.pack(pady=(0, 8))
+    # Apply button styling
+    style = ttk.Style()
+    style.configure("TButton", font=BUTTON_FONT, padding=6)
 
-extract_btn = ttk.Button(buttons_frame, text="Extract PNG to Folder", command=decode_action, width=40)
-extract_btn.pack(pady=(8, 10))
+    # Action buttons
+    compress_btn = ttk.Button(
+        buttons_frame,
+        text="Compress Folder to PNG",
+        command=encode_action,
+        width=40
+    )
+    compress_btn.pack(pady=(0, 8))
 
-# Progress section
-progress_frame = ttk.Frame(main_frame)
-progress_frame.pack(pady=(10, 0))
+    extract_btn = ttk.Button(
+        buttons_frame,
+        text="Extract PNG to Folder",
+        command=decode_action,
+        width=40
+    )
+    extract_btn.pack(pady=(8, 10))
 
-progress_bar = ttk.Progressbar(progress_frame, orient="horizontal", length=380, mode="determinate")
-progress_bar.pack(pady=5)
+    # Progress section
+    progress_frame = ttk.Frame(main_frame)
+    progress_frame.pack(pady=(10, 0))
 
-progress_label = ttk.Label(progress_frame, text="Idle", font=BUTTON_FONT, foreground=STATUS_COLOR)
-progress_label.pack(pady=5)
+    progress_bar = ttk.Progressbar(
+        progress_frame,
+        orient="horizontal",
+        length=380,
+        mode="determinate"
+    )
+    progress_bar.pack(pady=5)
 
-# Footer
-footer_label = ttk.Label(main_frame, text="Made by Olibot13 and chatgpt", font=FOOTER_FONT, foreground=FOOTER_COLOR)
-footer_label.pack(side="bottom", pady=(15, 0))
+    progress_label = ttk.Label(
+        progress_frame,
+        text="Idle",
+        font=BUTTON_FONT,
+        foreground=STATUS_COLOR
+    )
+    progress_label.pack(pady=5)
 
-root.mainloop()
+    # Footer
+    footer_label = ttk.Label(
+        main_frame,
+        text="Made by Olibot13 and ChatGPT",
+        font=FOOTER_FONT,
+        foreground=FOOTER_COLOR
+    )
+    footer_label.pack(side="bottom", pady=(15, 0))
+
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    create_main_window()

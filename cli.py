@@ -1,5 +1,6 @@
 import os
 import sys
+from tqdm import tqdm
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder
 
@@ -43,10 +44,18 @@ def compress_interactive():
     method_choice = input("Choose compression method (1-5, default 1): ").strip()
     method = methods[int(method_choice) - 1] if method_choice.isdigit() and 1 <= int(method_choice) <= 5 else 'lzma'
 
+    pbar = tqdm(total=100, unit='%', desc="Starting compression")
+    def progress_cb(p, msg):
+        pbar.n = p
+        pbar.desc = msg
+        pbar.refresh()
+
     try:
-        encode_folder_to_png(folder_path, output_png, method, progress_callback=print_progress)
+        encode_folder_to_png(folder_path, output_png, method, progress_callback=progress_cb)
+        pbar.close()
         print("\nCompression completed successfully!")
     except Exception as e:
+        pbar.close()
         print(f"\nCompression failed: {e}")
 
 def extract_interactive():
@@ -55,14 +64,19 @@ def extract_interactive():
     img_path = input("Enter PNG file path to extract: ").strip()
     output_folder = input("Enter output folder path: ").strip()
 
+    pbar = tqdm(total=100, unit='%', desc="Starting extraction")
+    def progress_cb(p, msg):
+        pbar.n = p
+        pbar.desc = msg
+        pbar.refresh()
+
     try:
-        decode_png_to_folder(img_path, output_folder, progress_callback=print_progress)
+        decode_png_to_folder(img_path, output_folder, progress_callback=progress_cb)
+        pbar.close()
         print("\nExtraction completed successfully!")
     except Exception as e:
+        pbar.close()
         print(f"\nExtraction failed: {e}")
-
-def print_progress(percent, message=''):
-    print(f"{percent:.1f}%: {message}")
 
 if __name__ == '__main__':
     main()
