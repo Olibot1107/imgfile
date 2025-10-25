@@ -4,12 +4,6 @@ Image.MAX_IMAGE_PIXELS = None
 import zipfile, io, os, sys, traceback
 
 def decode_png_to_folder(img_path, output_folder, progress_callback=None):
-    decode_png(img_path, output_folder, progress_callback, is_file=False)
-
-def decode_png_to_file(img_path, output_file, progress_callback=None):
-    decode_png(img_path, output_file, progress_callback, is_file=True)
-
-def decode_png(img_path, output_path, progress_callback=None, is_file=False):
     try:
         if not os.path.exists(img_path):
             raise FileNotFoundError(f"Image not found: {img_path}")
@@ -22,13 +16,8 @@ def decode_png(img_path, output_path, progress_callback=None, is_file=False):
         channels_per_pixel = 4 if mode == 'RGBA' else 3
         print(f"Image size: {width}x{height} pixels, mode: {mode}, channels: {channels_per_pixel}")
 
-        if is_file:
-            output_dir = os.path.dirname(output_path)
-            if output_dir and not os.path.exists(output_dir):
-                os.makedirs(output_dir, exist_ok=True)
-        else:
-            if not os.path.exists(output_path):
-                os.makedirs(output_path, exist_ok=True)
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder, exist_ok=True)
 
         print("Collecting all channel values...")
 
@@ -72,113 +61,74 @@ def decode_png(img_path, output_path, progress_callback=None, is_file=False):
 
 
         try:
-            if '\x00' in metadata and metadata.count('\x00') >= 5:
-                parts = metadata.split('\x00', 5)
-                if len(parts) >= 5:
-                    type_info = parts[0]
-                    input_name = parts[1]
-                    data_size_str = parts[2]
-                    compression_method = parts[3]
-                    password_info = parts[4]
-                    expected_size = int(data_size_str)
-                    print(f"Type: {type_info}")
-                    print(f"Original name: {input_name}")
-                    print(f"Expected data size: {expected_size} bytes")
-                    print(f"Compression method: {compression_method}")
-                    print(f"Password: {password_info}")
-                    print(f"Total bytes in image: {len(all_bytes)} bytes")
-                else:
-                    print("Incomplete metadata found, trying legacy format...")
-                    # Fallback to legacy
-                    if metadata.count('\x00') >= 2:
-                        parts = metadata.split('\x00', 2)
-                        input_name = parts[0]
-                        data_size_str = parts[1]
-                        compression_method = "unknown (legacy)"
-                        expected_size = int(data_size_str)
-                        type_info = "folder"  # Assume folder for legacy
-                        print(f"Legacy format detected")
-                    else:
-                        print("No valid metadata found, extracting all data...")
-                        expected_size = None
-                        compression_method = "unknown"
-                        type_info = "unknown"
-            elif '\x00' in metadata and metadata.count('\x00') >= 4:
-                # Legacy format without type
+            if '\x00' in metadata and metadata.count('\x00') >= 4:
+
                 parts = metadata.split('\x00', 4)
                 if len(parts) >= 4:
-                    input_name = parts[0]
+                    folder_name = parts[0]
                     data_size_str = parts[1]
                     compression_method = parts[2]
-                    password_info = parts[3]
+
                     expected_size = int(data_size_str)
-                    type_info = "folder"  # Assume folder for legacy
-                    print(f"Legacy format (4 parts): {input_name}")
+                    print(f"Original folder: {folder_name}")
                     print(f"Expected data size: {expected_size} bytes")
                     print(f"Compression method: {compression_method}")
-                    print(f"Password: {password_info}")
+                    print(f"Total bytes in image: {len(all_bytes)} bytes")
                 else:
-                    print("Incomplete metadata found, trying older legacy...")
+                    print("Incomplete enhanced metadata found, trying legacy format...")
                     if metadata.count('\x00') >= 2:
                         parts = metadata.split('\x00', 2)
-                        input_name = parts[0]
+                        folder_name = parts[0]
                         data_size_str = parts[1]
                         compression_method = "unknown (legacy)"
                         expected_size = int(data_size_str)
-                        type_info = "folder"
                         print(f"Legacy format detected")
                     else:
                         print("No valid metadata found, extracting all data...")
                         expected_size = None
                         compression_method = "unknown"
-                        type_info = "unknown"
             elif '\x00' in metadata and metadata.count('\x00') >= 3:
-                # Older legacy
+
                 parts = metadata.split('\x00', 3)
                 if len(parts) >= 3:
-                    input_name = parts[0]
+                    folder_name = parts[0]
                     data_size_str = parts[1]
                     compression_method = parts[2]
                     expected_size = int(data_size_str)
-                    type_info = "folder"
-                    print(f"Legacy format (3 parts): {input_name}")
+                    print(f"Original folder: {folder_name}")
                     print(f"Expected data size: {expected_size} bytes")
                     print(f"Compression method: {compression_method}")
+                    print(f"Total bytes in image: {len(all_bytes)} bytes")
                 else:
-                    print("Incomplete metadata, trying legacy...")
+                    print("Incomplete enhanced metadata found, trying legacy format...")
                     if metadata.count('\x00') >= 2:
                         parts = metadata.split('\x00', 2)
-                        input_name = parts[0]
+                        folder_name = parts[0]
                         data_size_str = parts[1]
                         compression_method = "unknown (legacy)"
                         expected_size = int(data_size_str)
-                        type_info = "folder"
                         print(f"Legacy format detected")
                     else:
                         print("No valid metadata found, extracting all data...")
                         expected_size = None
                         compression_method = "unknown"
-                        type_info = "unknown"
             elif '\x00' in metadata and metadata.count('\x00') >= 2:
-                # Oldest legacy
+
                 parts = metadata.split('\x00', 2)
-                input_name = parts[0]
+                folder_name = parts[0]
                 data_size_str = parts[1]
                 compression_method = "unknown (legacy)"
                 expected_size = int(data_size_str)
-                type_info = "folder"
                 print(f"Legacy metadata format detected")
             else:
                 print("No metadata found, extracting all data...")
                 expected_size = None
                 compression_method = "unknown"
-                type_info = "unknown"
         except (ValueError, IndexError) as e:
             print(f"Error parsing metadata: {e}, extracting all data...")
             print(f"Metadata parts: {metadata.split(chr(0)) if chr(0) in metadata else 'No null bytes found'}")
             expected_size = None
             compression_method = "unknown"
-            type_info = "unknown"
             metadata_channels_found = 0
 
         start_byte = metadata_channels_found * 4
@@ -198,25 +148,13 @@ def decode_png(img_path, output_path, progress_callback=None, is_file=False):
             with zipfile.ZipFile(zip_bytes, 'r') as zipf:
                 file_list = zipf.namelist()
                 print(f"ZIP contains {len(file_list)} files")
-                if is_file and type_info == 'file' and len(file_list) == 1:
-                    # Extract single file
-                    f = file_list[0]
-                    zipf.extract(f, os.path.dirname(output_path))
-                    # Rename to output_path
-                    extracted_path = os.path.join(os.path.dirname(output_path), f)
-                    os.rename(extracted_path, output_path)
+                for idx, f in enumerate(file_list, start=1):
+                    zipf.extract(f, output_folder)
                     if progress_callback:
-                        progress_callback(100, f'Extracting file: {f}')
-                    print(f"  Extracted: {f}")
-                    print(f"Successfully decoded {img_path} -> {output_path}")
-                else:
-                    # Extract to folder
-                    for idx, f in enumerate(file_list, start=1):
-                        zipf.extract(f, output_path)
-                        if progress_callback:
-                            progress_callback(idx / len(file_list) * 100, f'Extracting files: {idx}/{len(file_list)}')
-                        print(f"  Extracted: {f} ({idx}/{len(file_list)})")
-                    print(f"Successfully decoded {img_path} -> {output_path}/")
+                        progress_callback(idx / len(file_list) * 100, f'Extracting files: {idx}/{len(file_list)}')
+                    print(f"  Extracted: {f} ({idx}/{len(file_list)})")
+
+            print(f"Successfully decoded {img_path} -> {output_folder}/")
 
         except zipfile.BadZipFile as e:
             print(f"Error: The image does not contain a valid ZIP archive: {e}")
@@ -231,6 +169,6 @@ def decode_png(img_path, output_path, progress_callback=None, is_file=False):
             raise
 
     except Exception as e:
-        print(f"Fatal error in decode_png: {e}")
+        print(f"Fatal error in decode_png_to_folder: {e}")
         traceback.print_exc()
         raise
