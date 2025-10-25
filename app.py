@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 from tkinter import filedialog, messagebox, ttk, simpledialog
 import tkinter as tk
 from tqdm import tqdm
@@ -92,12 +93,16 @@ def encode_action():
         compress_window.destroy()
 
         def encode_worker():
+            start_time = time.time()
             pbar = tqdm(total=100, unit='%', desc="Compressing")
             try:
                 def progress_cb(percent, message='Encoding'):
+                    elapsed = time.time() - start_time
+                    eta = (elapsed / (percent / 100)) - elapsed if percent > 0 else 0
+                    eta_str = f"ETA: {int(eta)}s" if eta > 0 else ""
                     root.after(0, lambda: progress_bar.config(value=percent))
                     root.after(0, lambda: progress_label.config(
-                        text=f"{message}: {percent:.1f}%"))
+                        text=f"{message}: {percent:.1f}% {eta_str}"))
                     pbar.n = percent
                     pbar.desc = message
                     pbar.refresh()
@@ -175,12 +180,16 @@ def decode_action():
             return
 
     def decode_worker():
+        start_time = time.time()
         pbar = tqdm(total=100, unit='%', desc="Extracting")
         try:
             def progress_cb(percent, message='Extracting'):
+                elapsed = time.time() - start_time
+                eta = (elapsed / (percent / 100)) - elapsed if percent > 0 else 0
+                eta_str = f"ETA: {int(eta)}s" if eta > 0 else ""
                 root.after(0, lambda: progress_bar.config(value=percent))
                 root.after(0, lambda: progress_label.config(
-                    text=f"{message}: {percent:.1f}%"))
+                    text=f"{message}: {percent:.1f}% {eta_str}"))
                 pbar.n = percent
                 pbar.desc = message
                 pbar.refresh()
