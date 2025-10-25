@@ -17,7 +17,7 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            ext: exe
+            ext: .exe
           - os: ubuntu-latest
             ext: ""   # Linux: no extension
           - os: macos-13    # Intel macOS
@@ -47,8 +47,12 @@ jobs:
       run: |
         pyinstaller --onefile --hidden-import encoder --hidden-import decoder --name imgfile-gui app.py
 
+    # ✅ Cross-platform directory listing
     - name: List dist folder
-      run: ls -la dist
+      shell: bash
+      run: |
+        echo "Listing dist folder contents:"
+        ls -l dist || dir dist
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
