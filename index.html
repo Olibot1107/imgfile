@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Compressor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #00ff6e;
+            font-size: 28px;
+            margin-bottom: 25px;
+            font-weight: 600;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #3d3d3d;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 15px;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: #bbb;
+        }
+
+        .tab.active {
+            color: #00ff6e;
+            border-bottom-color: #00ff6e;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .upload-zone {
+            border: 2px dashed #555;
+            border-radius: 6px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #252525;
+            margin-bottom: 20px;
+        }
+
+        .upload-zone:hover {
+            border-color: #00ff6e;
+            background: #2a2a2a;
+        }
+
+        .upload-zone.dragover {
+            border-color: #00ff6e;
+            background: #2f3f2f;
+        }
+
+        .upload-zone p {
+            margin: 8px 0;
+        }
+
+        .upload-zone .main-text {
+            font-size: 16px;
+            color: #ccc;
+        }
+
+        .upload-zone .sub-text {
+            font-size: 13px;
+            color: #777;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .settings {
+            background: #252525;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .setting-row {
+            margin-bottom: 15px;
+        }
+
+        .setting-row:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #bbb;
+            font-size: 14px;
+        }
+
+        select, input[type="password"], input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #3d3d3d;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #00ff6e;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .checkbox-row label {
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: #00ff6e;
+            color: #1a1a1a;
+            border: none;
+            border-radius: 4px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: #00e062;
+        }
+
+        .btn:disabled {
+            background: #3d3d3d;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .progress-section {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #252525;
+            border-radius: 6px;
+        }
+
+        .progress-section.active {
+            display: block;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: #00ff6e;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 15px;
+        }
+
+        .image-preview {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .image-preview canvas {
+            max-width: 100%;
+            border: 1px solid #3d3d3d;
+            border-radius: 4px;
+            background: #1a1a1a;
+        }
+
+        .file-list {
+            max-height: 180px;
+            overflow-y: auto;
+            background: #1a1a1a;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-size: 13px;
+        }
+
+        .file-item {
+            padding: 6px 0;
+            border-bottom: 1px solid #2d2d2d;
+            color: #aaa;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-panel {
+            background: #1f2f1f;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 3px solid #00ff6e;
+            display: none;
+        }
+
+        .info-panel.show {
+            display: block;
+        }
+
+        .info-panel h3 {
+            color: #00ff6e;
+            font-size: 15px;
+            margin-bottom: 10px;
+        }
+
+        .info-panel p {
+            margin: 5px 0;
+            font-size: 13px;
+            color: #bbb;
+        }
+
+        .download-btn {
+            margin-top: 15px;
+            background: #0088ff;
+        }
+
+        .download-btn:hover {
+            background: #006dd9;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #555;
+            font-size: 12px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #3d3d3d;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>File Compressor</h1>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('compress')">Compress to PNG</button>
+            <button class="tab" onclick="switchTab('extract')">Extract from PNG</button>
+        </div>
+
+        <div id="compress-tab" class="tab-content active">
+            <div class="upload-zone" id="compress-drop" onclick="document.getElementById('file-input').click()">
+                <p class="main-text">Click to select files or drag them here</p>
+                <p class="sub-text">Multiple files will be combined into a single PNG</p>
+            </div>
+            <input type="file" id="file-input" multiple>
+
+            <div class="file-list" id="selected-files" style="display: none;"></div>
+
+            <div class="settings">
+                <div class="setting-row">
+                    <label>Compression Method</label>
+                    <select id="compress-method">
+                        <option value="lzma">LZMA - Best compression</option>
+                        <option value="bzip2">BZIP2 - Good compression</option>
+                        <option value="deflate">DEFLATE - Fast compression</option>
+                    </select>
+                </div>
+
+                <div class="setting-row">
+                    <label>Output Filename</label>
+                    <input type="text" id="output-name" placeholder="compressed.png">
+                </div>
+
+                <div class="setting-row">
+                    <label>Password (optional)</label>
+                    <input type="password" id="compress-pass" placeholder="Leave empty for no password">
+                </div>
+
+                <div class="setting-row checkbox-row">
+                    <input type="checkbox" id="size-limit" checked>
+                    <label for="size-limit">Enable 50MB size limit</label>
+                </div>
+            </div>
+
+            <button class="btn" id="compress-start" onclick="startCompress()" disabled>Start Compression</button>
+
+            <div class="progress-section" id="compress-progress">
+                <div class="progress-info">
+                    <span id="compress-status">Processing...</span>
+                    <span id="compress-percent">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" id="compress-bar"></div>
+                </div>
+                <div class="image-preview">
+                    <canvas id="preview-canvas"></canvas>
+                </div>
+                <button class="btn download-btn" id="download-btn" onclick="downloadImage()" style="display: none;">Download PNG</button>
+            </div>
+        </div>
+
+        <div id="extract-tab" class="tab-content">
+            <div class="upload-zone" id="extract-drop" onclick="document.getElementById('png-input').click()">
+                <p class="main-text">Click to select PNG file or drag it here</p>
+                <p class="sub-text">Select a compressed PNG to extract its contents</p>
+            </div>
+            <input type="file" id="png-input" accept=".png">
+
+            <div class="info-panel" id="png-info">
+                <h3>PNG Information</h3>
+                <div id="png-details"></div>
+            </div>
+
+            <div class="settings">
+                <div class="setting-row">
+                    <label>Password (if protected)</label>
+                    <input type="password" id="extract-pass" placeholder="Leave empty if no password">
+                </div>
+            </div>
+
+            <button class="btn" id="extract-start" onclick="startExtract()" disabled>Extract Files</button>
+
+            <div class="progress-section" id="extract-progress">
+                <div class="progress-info">
+                    <span id="extract-status">Processing...</span>
+                    <span id="extract-percent">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" id="extract-bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Made by Olibot13 and ChatGPT
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        let selectedFiles = [];
+        let selectedPNG = null;
+        let generatedBlob = null;
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'compress') {
+                document.querySelector('.tab:first-child').classList.add('active');
+                document.getElementById('compress-tab').classList.add('active');
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+                document.getElementById('extract-tab').classList.add('active');
+            }
+        }
+
+        const compressDrop = document.getElementById('compress-drop');
+        compressDrop.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            compressDrop.classList.add('dragover');
+        });
+        compressDrop.addEventListener('dragleave', () => {
+            compressDrop.classList.remove('dragover');
+        });
+        compressDrop.addEventListener('drop', (e) => {
+            e.preventDefault();
+            compressDrop.classList.remove('dragover');
+            handleFiles(Array.from(e.dataTransfer.files));
+        });
+
+        const extractDrop = document.getElementById('extract-drop');
+        extractDrop.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            extractDrop.classList.add('dragover');
+        });
+        extractDrop.addEventListener('dragleave', () => {
+            extractDrop.classList.remove('dragover');
+        });
+        extractDrop.addEventListener('drop', (e) => {
+            e.preventDefault();
+            extractDrop.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handlePNG(e.dataTransfer.files[0]);
+            }
+        });
+
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            handleFiles(Array.from(e.target.files));
+        });
+
+        document.getElementById('png-input').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handlePNG(e.target.files[0]);
+            }
+        });
+
+        function handleFiles(files) {
+            selectedFiles = files;
+            const list = document.getElementById('selected-files');
+            list.innerHTML = files.map(f => 
+                `<div class="file-item">${f.name} - ${formatBytes(f.size)}</div>`
+            ).join('');
+            list.style.display = 'block';
+            document.getElementById('compress-start').disabled = false;
+            
+            if (!document.getElementById('output-name').value) {
+                document.getElementById('output-name').value = 'compressed.png';
+            }
+        }
+
+        function handlePNG(file) {
+            if (!file.name.endsWith('.png')) {
+                alert('Please select a PNG file');
+                return;
+            }
+            selectedPNG = file;
+            document.getElementById('extract-start').disabled = false;
+            
+            const info = document.getElementById('png-info');
+            const details = document.getElementById('png-details');
+            details.innerHTML = `
+                <p>File: ${file.name}</p>
+                <p>Size: ${formatBytes(file.size)}</p>
+            `;
+            info.classList.add('show');
+        }
+
+        async function startCompress() {
+            if (selectedFiles.length === 0) return;
+
+            const limitEnabled = document.getElementById('size-limit').checked;
+            const password = document.getElementById('compress-pass').value.trim();
+            const method = document.getElementById('compress-method').value;
+            const outputName = document.getElementById('output-name').value || 'compressed.png';
+
+            document.getElementById('compress-start').disabled = true;
+            const progressSection = document.getElementById('compress-progress');
+            progressSection.classList.add('active');
+
+            try {
+                updateProgress('compress', 5, 'Creating ZIP archive');
+                
+                const zip = new JSZip();
+                for (const file of selectedFiles) {
+                    const data = await file.arrayBuffer();
+                    zip.file(file.name, data);
+                }
+
+                updateProgress('compress', 30, 'Compressing data');
+
+                const zipData = await zip.generateAsync({
+                    type: 'uint8array',
+                    compression: 'DEFLATE',
+                    compressionOptions: { level: 9 }
+                });
+
+                let finalData = zipData;
+
+                if (limitEnabled && finalData.length > 50 * 1024 * 1024) {
+                    throw new Error('Data exceeds 50MB limit');
+                }
+
+                updateProgress('compress', 50, 'Preparing encryption');
+
+                if (password) {
+                    finalData = await encryptData(finalData, password);
+                }
+
+                updateProgress('compress', 65, 'Encoding to image');
+
+                const folderName = outputName.replace('.png', '');
+                const metadata = `${folderName}\x00${finalData.length}\x00${method}\x00${password ? 'encrypted' : 'none'}\x00`;
+                const metaBytes = new TextEncoder().encode(metadata);
+
+                const totalPixels = metaBytes.length + Math.ceil(finalData.length / 4);
+                const size = Math.max(100, Math.ceil(Math.sqrt(totalPixels)));
+
+                updateProgress('compress', 75, 'Generating image');
+
+                const canvas = document.getElementById('preview-canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                
+                const imageData = ctx.createImageData(size, size);
+                const pixels = imageData.data;
+
+                for (let i = 0; i < pixels.length; i += 4) {
+                    pixels[i] = 255;
+                    pixels[i + 1] = 255;
+                    pixels[i + 2] = 255;
+                    pixels[i + 3] = 255;
+                }
+
+                for (let i = 0; i < metaBytes.length; i++) {
+                    pixels[i * 4 + 3] = metaBytes[i] + 1;
+                }
+
+                const dataStart = metaBytes.length * 4;
+                for (let i = 0; i < finalData.length; i++) {
+                    pixels[dataStart + i] = finalData[i];
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+
+                updateProgress('compress', 95, 'Finalizing');
+
+                generatedBlob = await new Promise(resolve => {
+                    canvas.toBlob(resolve, 'image/png');
+                });
+
+                updateProgress('compress', 100, 'Complete');
+                document.getElementById('download-btn').style.display = 'block';
+
+            } catch (error) {
+                alert('Compression failed: ' + error.message);
+                progressSection.classList.remove('active');
+                document.getElementById('compress-start').disabled = false;
+            }
+        }
+
+        function downloadImage() {
+            if (!generatedBlob) return;
+            
+            const outputName = document.getElementById('output-name').value || 'compressed.png';
+            const url = URL.createObjectURL(generatedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = outputName;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        async function startExtract() {
+            if (!selectedPNG) return;
+
+            const password = document.getElementById('extract-pass').value.trim();
+            document.getElementById('extract-start').disabled = true;
+            const progressSection = document.getElementById('extract-progress');
+            progressSection.classList.add('active');
+
+            try {
+                updateProgress('extract', 10, 'Loading image');
+
+                const img = await loadImage(selectedPNG);
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                
+                updateProgress('extract', 30, 'Reading pixel data');
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const pixels = imageData.data;
+
+                updateProgress('extract', 45, 'Extracting metadata');
+
+                let metadata = '';
+                let metaLen = 0;
+                for (let i = 0; i < pixels.length / 4; i++) {
+                    const alpha = pixels[i * 4 + 3];
+                    if (alpha !== 255) {
+                        metadata += String.fromCharCode(alpha - 1);
+                        metaLen++;
+                        if (metadata.split('\x00').length >= 5) break;
+                    }
+                    if (i > 10000) break;
+                }
+
+                const parts = metadata.split('\x00');
+                const dataSize = parseInt(parts[1]);
+                const isEncrypted = parts[3] === 'encrypted';
+
+                updateProgress('extract', 60, 'Extracting compressed data');
+
+                const dataStart = metaLen * 4;
+                let zipData = new Uint8Array(pixels.slice(dataStart, dataStart + dataSize));
+
+                if (isEncrypted) {
+                    if (!password) {
+                        throw new Error('Password required');
+                    }
+                    updateProgress('extract', 70, 'Decrypting');
+                    zipData = await decryptData(zipData, password);
+                }
+
+                updateProgress('extract', 85, 'Extracting files');
+
+                const zip = await JSZip.loadAsync(zipData);
+                const files = Object.keys(zip.files);
+
+                for (let i = 0; i < files.length; i++) {
+                    const filename = files[i];
+                    if (!zip.files[filename].dir) {
+                        const blob = await zip.files[filename].async('blob');
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    }
+                }
+
+                updateProgress('extract', 100, 'Complete');
+
+                setTimeout(() => {
+                    progressSection.classList.remove('active');
+                    document.getElementById('extract-start').disabled = false;
+                }, 2000);
+
+            } catch (error) {
+                alert('Extraction failed: ' + error.message);
+                progressSection.classList.remove('active');
+                document.getElementById('extract-start').disabled = false;
+            }
+        }
+
+        function updateProgress(type, percent, status) {
+            document.getElementById(`${type}-status`).textContent = status;
+            document.getElementById(`${type}-percent`).textContent = Math.round(percent) + '%';
+            document.getElementById(`${type}-bar`).style.width = percent + '%';
+        }
+
+        async function encryptData(data, password) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits', 'deriveKey']
+            );
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const key = await crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+                keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+            );
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+            
+            const result = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+            result.set(salt, 0);
+            result.set(iv, salt.length);
+            result.set(new Uint8Array(encrypted), salt.length + iv.length);
+            return result;
+        }
+
+        async function decryptData(data, password) {
+            const enc = new TextEncoder();
+            const salt = data.slice(0, 16);
+            const iv = data.slice(16, 28);
+            const encrypted = data.slice(28);
+            
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits', 'deriveKey']
+            );
+            const key = await crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+                keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+            );
+            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encrypted);
+            return new Uint8Array(decrypted);
+        }
+
+        function loadImage(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>
