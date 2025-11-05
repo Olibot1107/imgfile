@@ -79,10 +79,8 @@
 
         <div class="settings">
             <div class="setting-row">
-                <label>Compression Method (currently only DEFLATE is used)</label>
-                <select id="compress-method">
-                    <option value="deflate">DEFLATE – fast, good ratio</option>
-                </select>
+                <label id="compress-method-label">Compression Method</label>
+                <select id="compress-method"></select>
             </div>
 
             <div class="setting-row">
@@ -98,6 +96,12 @@
             <div class="setting-row checkbox-row">
                 <input type="checkbox" id="size-limit" checked>
                 <label for="size-limit">Enable 50 MB size limit</label>
+            </div>
+
+            <!-- This checkbox only appears on mobile (forced fast‑mode) -->
+            <div class="setting-row checkbox-row" id="fast-mode-row" style="display:none">
+                <input type="checkbox" id="fast-mode" checked disabled>
+                <label for="fast-mode">Fast mode (auto‑selected on mobile)</label>
             </div>
         </div>
 
@@ -164,6 +168,55 @@
 let selectedFiles = [];    // files for compression
 let selectedPNG   = null;  // PNG chosen for extraction
 let generatedBlob = null;  // Blob that holds the final PNG
+let isMobile      = false; // true on phones/tablets, false on desktop
+
+/* -------------------------------------------------
+   DEVICE DETECTION
+--------------------------------------------------- */
+function detectDevice(){
+    // Very simple heuristic – touch capable + narrow viewport → mobile/tablet
+    const hasTouch = ('maxTouchPoints' in navigator && navigator.maxTouchPoints > 0) ||
+                     ('ontouchstart' in window);
+    const smallScreen = window.innerWidth < 900; // arbitrary breakpoint
+    isMobile = hasTouch && smallScreen;
+}
+detectDevice();
+
+/* -------------------------------------------------
+   UI INITIALISATION (compression methods)
+--------------------------------------------------- */
+function populateMethods(){
+    const select = document.getElementById('compress-method');
+    select.innerHTML = ''; // clear
+
+    // Base (fast) method – always present
+    const fast = document.createElement('option');
+    fast.value = 'deflate-fast';
+    fast.textContent = 'DEFLATE – fast (low‑level)';
+    select.appendChild(fast);
+
+    if(!isMobile){
+        // Desktop only – expose more choices
+        const best = document.createElement('option');
+        best.value = 'deflate-best';
+        best.textContent = 'DEFLATE – best (level 9)';
+        select.appendChild(best);
+
+        const store = document.createElement('option');
+        store.value = 'store';
+        store.textContent = 'STORE – no compression (fastest, larger output)';
+        select.appendChild(store);
+    }
+
+    // Auto‑select the first (fastest) entry
+    select.selectedIndex = 0;
+}
+populateMethods();
+
+/* Show / hide fast‑mode row for mobiles */
+if(isMobile){
+    document.getElementById('fast-mode-row').style.display = 'flex';
+}
 
 /* -------------------------------------------------
    TAB SWITCHING
@@ -245,7 +298,7 @@ function handlePNG(file){
 }
 
 /* -------------------------------------------------
-   COMPRESSION LOGIC
+   COMPRESSION LOGIC (with device‑aware options)
 --------------------------------------------------- */
 async function startCompress(){
     if(selectedFiles.length===0) return;
@@ -253,12 +306,25 @@ async function startCompress(){
     const password = document.getElementById('compress-pass').value.trim();
     const limitEnabled = document.getElementById('size-limit').checked;
     const outputName = document.getElementById('output-name').value || 'compressed.png';
+    const method = document.getElementById('compress-method').value;
 
     // UI prep
     document.getElementById('compress-start').disabled = true;
     const progSec = document.getElementById('compress-progress');
     progSec.classList.add('active');
     updateProgress('compress',0,'Creating ZIP');
+
+    // Determine ZIP options based on selected method
+    let zipOptions = {type:'uint8array'};
+    if(method === 'deflate-best'){
+        zipOptions.compression = 'DEFLATE';
+        zipOptions.compressionOptions = {level:9}; // highest ratio (desktop)
+    }else if(method === 'deflate-fast'){
+        zipOptions.compression = 'DEFLATE';
+        zipOptions.compressionOptions = {level:isMobile?3:6}; // faster on mobile
+    }else if(method === 'store'){
+        zipOptions.compression = 'STORE'; // no compression
+    }
 
     try{
         // ------- 1. Build the ZIP -------
@@ -267,15 +333,21 @@ async function startCompress(){
             const data = await f.arrayBuffer();
             zip.file(f.name, data);
         }
-        const zipUint8 = await zip.generateAsync({type:'uint8array',compression:'DEFLATE',compressionOptions:{level:9}});
+        const zipUint8 = await zip.generateAsync(zipOptions);
         updateProgress('compress',30,'ZIP created');
 
         // ------- 2. Optional encryption -------
         let payload = zipUint8;
         let encryptedFlag = 0;
         if(password){
-            encryptedFlag = 1;
-            payload = await encryptData(payload,password);
+            // On mobile we force fast‑mode (skip encryption) to stay under memory limits.
+            if(isMobile){
+                alert('Encryption is disabled on mobile devices to avoid crashes.');
+            }else{
+                encryptedFlag = 1;
+                payload = await encryptData(payload,password);
+                updateProgress('compress',45,'Encrypted');
+            }
         }
         updateProgress('compress',55,'Payload ready');
 
@@ -292,8 +364,12 @@ async function startCompress(){
         updateProgress('compress',70,'Data packed');
 
         // ------- 4. Encode data into a canvas (RGB only) -------
+        // Mobile devices get a smaller canvas (max 1024px) to keep memory low.
         const pixelsNeeded = Math.ceil(fullData.length / 3);    // 3 bytes per pixel (R,G,B)
-        const dimension = Math.max(100, Math.ceil(Math.sqrt(pixelsNeeded)));
+        const maxDimMobile = 1024;
+        let dimension = Math.ceil(Math.sqrt(pixelsNeeded));
+        if(isMobile && dimension > maxDimMobile) dimension = maxDimMobile;
+
         const canvas = document.getElementById('preview-canvas');
         canvas.width = dimension;
         canvas.height = dimension;
@@ -301,7 +377,7 @@ async function startCompress(){
         const imgData = ctx.createImageData(dimension,dimension);
         const dst = imgData.data; // RGBA Uint8ClampedArray
 
-        // Fill everything with opaque white (so any unused pixel is harmless)
+        // Fill with opaque white (harmless for unused pixels)
         for(let i=0;i<dst.length;i+=4){
             dst[i]=255;dst[i+1]=255;dst[i+2]=255;dst[i+3]=255;
         }
@@ -368,13 +444,11 @@ async function startExtract(){
         updateProgress('extract',25,'Reading header');
         const flag = src[0]; // R of pixel 0
         const lenBytes = new Uint8Array(4);
-        // length bytes are stored in the next three channels + the R channel of pixel 1
-        //   pixel 0 : R=flag, G=length0, B=length1
-        //   pixel 1 : R=length2, G=length3, B=...
-        lenBytes[0] = src[1]; // G of pixel 0
-        lenBytes[1] = src[2]; // B of pixel 0
-        lenBytes[2] = src[4]; // R of pixel 1
-        lenBytes[3] = src[5]; // G of pixel 1
+        // length bytes: G,B of pixel0 + R,G of pixel1
+        lenBytes[0] = src[1];
+        lenBytes[1] = src[2];
+        lenBytes[2] = src[4];
+        lenBytes[3] = src[5];
         const dataLength = new DataView(lenBytes.buffer).getUint32(0);
 
         // ------- 2. Extract payload (starting at byte index 5) -------
@@ -383,7 +457,7 @@ async function startExtract(){
         let dstIdx = 0;
         for(let i=5;i<5+dataLength;i++){
             const pixelIdx = Math.floor(i/3);
-            const channel = i%3; // 0=R,1=G,2=B
+            const channel = i%3;
             payload[dstIdx++] = src[pixelIdx*4 + channel];
         }
 
