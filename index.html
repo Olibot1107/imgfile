@@ -198,12 +198,12 @@
 /* -------------------------------------------------
    GLOBAL STATE
 --------------------------------------------------- */
-let selectedFiles = [];          // files for compression
-let selectedPNG   = null;        // PNG chosen for extraction
-let generatedBlob = null;        // final PNG Blob
-let isMobile      = false;       // device detection
-let pendingZip    = null;        // ZIP object after preview (used on confirm)
-let pendingPayload = null;       // raw payload (used after confirm)
+let selectedFiles   = [];          // files for compression
+let selectedPNG     = null;        // PNG chosen for extraction
+let generatedBlob   = null;        // final PNG Blob
+let isMobile        = false;       // device detection
+let pendingZip      = null;        // ZIP object after preview (used on confirm)
+let pendingPayload  = null;        // raw payload (kept for completeness)
 
 /* -------------------------------------------------
    DEVICE DETECTION
@@ -331,9 +331,9 @@ function handlePNG(file){
 async function startCompress(){
     if(selectedFiles.length===0) return;
 
-    const password = document.getElementById('compress-pass').value.trim();
-    const outputName = document.getElementById('output-name').value || 'compressed.png';
-    const method = document.getElementById('compress-method').value;
+    const password    = document.getElementById('compress-pass').value.trim();
+    const outputName  = document.getElementById('output-name').value || 'compressed.png';
+    const method      = document.getElementById('compress-method').value;
 
     document.getElementById('compress-start').disabled = true;
     const progSec = document.getElementById('compress-progress');
@@ -400,13 +400,15 @@ async function startCompress(){
         const imgData = ctx.createImageData(dimension,dimension);
         const dst = imgData.data;
 
+        // initialise white background
         for(let i=0;i<dst.length;i+=4){
             dst[i]=255;dst[i+1]=255;dst[i+2]=255;dst[i+3]=255;
         }
 
+        // copy payload bytes into RGB channels
         for(let i=0;i<fullData.length;i++){
             const pixelIdx = Math.floor(i/3);
-            const channel = i%3; // 0=R,1=G,2=B
+            const channel  = i%3; // 0=R,1=G,2=B
             dst[pixelIdx*4 + channel] = fullData[i];
         }
 
@@ -475,7 +477,7 @@ async function startExtract(){
         let dstIdx = 0;
         for(let i=5;i<5+dataLength;i++){
             const pixelIdx = Math.floor(i/3);
-            const channel = i%3;
+            const channel  = i%3;
             payload[dstIdx++] = src[pixelIdx*4 + channel];
         }
 
@@ -524,19 +526,38 @@ function confirmExtraction(){
     // Proceed with actual extraction (download)
     extractAllFiles();
 }
+
+/* -------------------------------------------------
+   EXTRACT ALL FILES – now creates ONE ZIP for download
+--------------------------------------------------- */
 async function extractAllFiles(){
     try{
-        updateProgress('extract',85,'Downloading files');
+        updateProgress('extract',85,'Creating output ZIP');
+
+        // If the original data was *not* encrypted we could just reuse the original
+        // zipBytes, but building a fresh ZIP guarantees consistent filenames
+        // and lets us add a friendly container name.
+        const outZip = new JSZip();
+
+        // Add every file from the pendingZip into the new archive
         for(const name of Object.keys(pendingZip.files)){
             const fileObj = pendingZip.files[name];
-            if(fileObj.dir) continue;
-            const blob = await fileObj.async('blob');
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = name;
-            a.click();
-            URL.revokeObjectURL(url);
+            if (fileObj.dir) continue;                 // skip folders (we never store them)
+            const content = await fileObj.async('uint8array');
+            outZip.file(name, content);
         }
+
+        // Generate the final zip blob
+        const zipBlob = await outZip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+        const zipName = (document.getElementById('output-name').value || 'extracted-files') + '.zip';
+
+        // Trigger download
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url; a.download = zipName;
+        a.click();
+        URL.revokeObjectURL(url);
+
         updateProgress('extract',100,'Done');
         setTimeout(()=>resetExtractUI(),1500);
     }catch(err){
