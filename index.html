@@ -55,6 +55,27 @@
     ::-webkit-scrollbar-track{background:#1a1a1a}
     ::-webkit-scrollbar-thumb{background:#3d3d3d;border-radius:4px}
     ::-webkit-scrollbar-thumb:hover{background:#555}
+
+    /* ---------- MODAL (new) ---------- */
+    .modal-backdrop{
+        position:fixed;top:0;left:0;width:100vw;height:100vh;
+        background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;
+        z-index:1000;visibility:hidden;opacity:0;transition:opacity .2s,visibility .2s;
+    }
+    .modal-backdrop.show{visibility:visible;opacity:1;}
+    .modal{
+        background:#2d2d2d;padding:20px;border-radius:8px;max-width:500px;width:90%;
+        box-shadow:0 4px 8px rgba(0,0,0,.5);
+    }
+    .modal h2{color:#00ff6e;margin-bottom:15px;font-size:22px;}
+    .modal ul{list-style:none;padding-left:0;margin-bottom:20px;max-height:200px;overflow-y:auto;}
+    .modal ul li{color:#ccc;padding:4px 0;border-bottom:1px solid #3d3d3d;}
+    .modal .modal-actions{display:flex;justify-content:flex-end;gap:10px;}
+    .modal .modal-actions button{
+        padding:8px 16px;border:none;border-radius:4px;font-weight:600;cursor:pointer;
+    }
+    .modal .modal-actions .confirm{background:#00ff6e;color:#1a1a1a;}
+    .modal .modal-actions .cancel{background:#555;color:#e0e0e0;}
 </style>
 </head>
 <body>
@@ -158,6 +179,18 @@
     <div class="footer">Made by Olibot13 and ChatGPT</div>
 </div>
 
+<!-- ---------- MODAL FOR PREVIEW (new) ---------- -->
+<div class="modal-backdrop" id="preview-modal">
+    <div class="modal">
+        <h2>Files to be extracted</h2>
+        <ul id="preview-list"></ul>
+        <div class="modal-actions">
+            <button class="cancel" onclick="closePreview()">Cancel</button>
+            <button class="confirm" onclick="confirmExtraction()">Extract</button>
+        </div>
+    </div>
+</div>
+
 <!-- ---------- DEPENDENCIES ---------- -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
@@ -165,19 +198,20 @@
 /* -------------------------------------------------
    GLOBAL STATE
 --------------------------------------------------- */
-let selectedFiles = [];    // files for compression
-let selectedPNG   = null;  // PNG chosen for extraction
-let generatedBlob = null;  // Blob that holds the final PNG
-let isMobile      = false; // true on phones/tablets, false on desktop
+let selectedFiles = [];          // files for compression
+let selectedPNG   = null;        // PNG chosen for extraction
+let generatedBlob = null;        // final PNG Blob
+let isMobile      = false;       // device detection
+let pendingZip    = null;        // ZIP object after preview (used on confirm)
+let pendingPayload = null;       // raw payload (used after confirm)
 
 /* -------------------------------------------------
    DEVICE DETECTION
 --------------------------------------------------- */
 function detectDevice(){
-    // Very simple heuristic – touch capable + narrow viewport → mobile/tablet
     const hasTouch = ('maxTouchPoints' in navigator && navigator.maxTouchPoints > 0) ||
                      ('ontouchstart' in window);
-    const smallScreen = window.innerWidth < 900; // arbitrary breakpoint
+    const smallScreen = window.innerWidth < 900;
     isMobile = hasTouch && smallScreen;
 }
 detectDevice();
@@ -187,16 +221,14 @@ detectDevice();
 --------------------------------------------------- */
 function populateMethods(){
     const select = document.getElementById('compress-method');
-    select.innerHTML = ''; // clear
+    select.innerHTML = '';
 
-    // Base (fast) method – always present
     const fast = document.createElement('option');
     fast.value = 'deflate-fast';
     fast.textContent = 'DEFLATE – fast (low‑level)';
     select.appendChild(fast);
 
     if(!isMobile){
-        // Desktop only – expose more choices
         const best = document.createElement('option');
         best.value = 'deflate-best';
         best.textContent = 'DEFLATE – best (level 9)';
@@ -207,13 +239,10 @@ function populateMethods(){
         store.textContent = 'STORE – no compression (fastest, larger output)';
         select.appendChild(store);
     }
-
-    // Auto‑select the first (fastest) entry
     select.selectedIndex = 0;
 }
 populateMethods();
 
-/* Show / hide fast‑mode row for mobiles */
 if(isMobile){
     document.getElementById('fast-mode-row').style.display = 'flex';
 }
@@ -271,7 +300,6 @@ function handleFiles(files){
     list.style.display = 'block';
     document.getElementById('compress-start').disabled = false;
 
-    // Pre‑fill a default output name if the user left it empty
     if(!document.getElementById('output-name').value){
         document.getElementById('output-name').value = 'compressed.png';
     }
@@ -298,36 +326,33 @@ function handlePNG(file){
 }
 
 /* -------------------------------------------------
-   COMPRESSION LOGIC (with device‑aware options)
+   COMPRESSION LOGIC (unchanged except minor tweaks)
 --------------------------------------------------- */
 async function startCompress(){
     if(selectedFiles.length===0) return;
 
     const password = document.getElementById('compress-pass').value.trim();
-    const limitEnabled = document.getElementById('size-limit').checked;
     const outputName = document.getElementById('output-name').value || 'compressed.png';
     const method = document.getElementById('compress-method').value;
 
-    // UI prep
     document.getElementById('compress-start').disabled = true;
     const progSec = document.getElementById('compress-progress');
     progSec.classList.add('active');
     updateProgress('compress',0,'Creating ZIP');
 
-    // Determine ZIP options based on selected method
+    // ZIP options based on method
     let zipOptions = {type:'uint8array'};
     if(method === 'deflate-best'){
         zipOptions.compression = 'DEFLATE';
-        zipOptions.compressionOptions = {level:9}; // highest ratio (desktop)
+        zipOptions.compressionOptions = {level:9};
     }else if(method === 'deflate-fast'){
         zipOptions.compression = 'DEFLATE';
-        zipOptions.compressionOptions = {level:isMobile?3:6}; // faster on mobile
+        zipOptions.compressionOptions = {level:isMobile?3:6};
     }else if(method === 'store'){
-        zipOptions.compression = 'STORE'; // no compression
+        zipOptions.compression = 'STORE';
     }
 
     try{
-        // ------- 1. Build the ZIP -------
         const zip = new JSZip();
         for(const f of selectedFiles){
             const data = await f.arrayBuffer();
@@ -336,11 +361,10 @@ async function startCompress(){
         const zipUint8 = await zip.generateAsync(zipOptions);
         updateProgress('compress',30,'ZIP created');
 
-        // ------- 2. Optional encryption -------
+        // ---------- ENCRYPTION ----------
         let payload = zipUint8;
         let encryptedFlag = 0;
         if(password){
-            // On mobile we force fast‑mode (skip encryption) to stay under memory limits.
             if(isMobile){
                 alert('Encryption is disabled on mobile devices to avoid crashes.');
             }else{
@@ -351,11 +375,11 @@ async function startCompress(){
         }
         updateProgress('compress',55,'Payload ready');
 
-        // ------- 3. Build binary layout (flag + length + data) -------
+        // ---------- PACK HEADER ----------
         const lengthBytes = new Uint8Array(4);
         const view = new DataView(lengthBytes.buffer);
-        view.setUint32(0,payload.length);               // big‑endian 32‑bit length
-        const header = new Uint8Array(1+4);             // flag + length
+        view.setUint32(0,payload.length);               // big‑endian
+        const header = new Uint8Array(1+4);
         header[0] = encryptedFlag;
         header.set(lengthBytes,1);
         const fullData = new Uint8Array(header.length + payload.length);
@@ -363,9 +387,8 @@ async function startCompress(){
         fullData.set(payload,header.length);
         updateProgress('compress',70,'Data packed');
 
-        // ------- 4. Encode data into a canvas (RGB only) -------
-        // Mobile devices get a smaller canvas (max 1024px) to keep memory low.
-        const pixelsNeeded = Math.ceil(fullData.length / 3);    // 3 bytes per pixel (R,G,B)
+        // ---------- CANVAS ENCODING ----------
+        const pixelsNeeded = Math.ceil(fullData.length / 3);
         const maxDimMobile = 1024;
         let dimension = Math.ceil(Math.sqrt(pixelsNeeded));
         if(isMobile && dimension > maxDimMobile) dimension = maxDimMobile;
@@ -375,15 +398,12 @@ async function startCompress(){
         canvas.height = dimension;
         const ctx = canvas.getContext('2d');
         const imgData = ctx.createImageData(dimension,dimension);
-        const dst = imgData.data; // RGBA Uint8ClampedArray
+        const dst = imgData.data;
 
-        // Fill with opaque white (harmless for unused pixels)
         for(let i=0;i<dst.length;i+=4){
             dst[i]=255;dst[i+1]=255;dst[i+2]=255;dst[i+3]=255;
         }
 
-        // Write the payload bytes into R,G,B channels sequentially
-        let srcIdx = 0;
         for(let i=0;i<fullData.length;i++){
             const pixelIdx = Math.floor(i/3);
             const channel = i%3; // 0=R,1=G,2=B
@@ -393,10 +413,9 @@ async function startCompress(){
         ctx.putImageData(imgData,0,0);
         updateProgress('compress',90,'Canvas ready');
 
-        // ------- 5. Export canvas as PNG -------
+        // ---------- EXPORT ----------
         generatedBlob = await new Promise(res=>canvas.toBlob(res,'image/png'));
         updateProgress('compress',100,'Done');
-
         document.getElementById('download-btn').style.display='block';
     }catch(err){
         alert('Compression failed: '+err.message);
@@ -419,19 +438,19 @@ function downloadImage(){
 }
 
 /* -------------------------------------------------
-   EXTRACTION LOGIC
+   EXTRACTION LOGIC – now includes a preview modal
 --------------------------------------------------- */
 async function startExtract(){
     if(!selectedPNG) return;
 
-    const password = document.getElementById('extract-pass').value.trim();
+    // UI reset for a new extraction
     document.getElementById('extract-start').disabled = true;
     const progSec = document.getElementById('extract-progress');
     progSec.classList.add('active');
+    updateProgress('extract',5,'Loading PNG');
 
     try{
-        updateProgress('extract',5,'Loading PNG');
-
+        // ----- Load PNG and read raw bytes -----
         const img = await loadImage(selectedPNG);
         const canvas = document.createElement('canvas');
         canvas.width = img.width; canvas.height = img.height;
@@ -440,18 +459,17 @@ async function startExtract(){
         const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
         const src = imgData.data; // RGBA
 
-        // ------- 1. Read flag + length (first 5 bytes) -------
+        // ----- Header -----
         updateProgress('extract',25,'Reading header');
-        const flag = src[0]; // R of pixel 0
+        const flag = src[0];               // R of pixel 0
         const lenBytes = new Uint8Array(4);
-        // length bytes: G,B of pixel0 + R,G of pixel1
-        lenBytes[0] = src[1];
-        lenBytes[1] = src[2];
-        lenBytes[2] = src[4];
-        lenBytes[3] = src[5];
+        lenBytes[0] = src[1];               // G of pixel0
+        lenBytes[1] = src[2];               // B of pixel0
+        lenBytes[2] = src[4];               // R of pixel1
+        lenBytes[3] = src[5];               // G of pixel1
         const dataLength = new DataView(lenBytes.buffer).getUint32(0);
 
-        // ------- 2. Extract payload (starting at byte index 5) -------
+        // ----- Payload -----
         updateProgress('extract',45,'Extracting payload');
         const payload = new Uint8Array(dataLength);
         let dstIdx = 0;
@@ -461,9 +479,10 @@ async function startExtract(){
             payload[dstIdx++] = src[pixelIdx*4 + channel];
         }
 
-        // ------- 3. Decrypt if needed -------
+        // ----- Decrypt if needed -----
         let zipBytes = payload;
         if(flag===1){
+            const password = document.getElementById('extract-pass').value.trim();
             if(!password){
                 throw new Error('File is encrypted – password required');
             }
@@ -471,13 +490,46 @@ async function startExtract(){
             zipBytes = await decryptData(payload,password);
         }
 
-        // ------- 4. Load ZIP and trigger downloads -------
-        updateProgress('extract',80,'Opening ZIP');
-        const zip = await JSZip.loadAsync(zipBytes);
-        const entries = Object.keys(zip.files);
-        for(const name of entries){
-            const fileObj = zip.files[name];
-            if(fileObj.dir) continue; // skip folders
+        // ----- Load ZIP for preview -----
+        updateProgress('extract',80,'Reading archive');
+        pendingZip = await JSZip.loadAsync(zipBytes);
+        pendingPayload = zipBytes; // keep a reference for later (not strictly needed)
+
+        // Build the preview list
+        const listEl = document.getElementById('preview-list');
+        listEl.innerHTML = Object.keys(pendingZip.files)
+            .filter(name=>!pendingZip.files[name].dir)
+            .map(name=>`<li>${name} – ${formatBytes(pendingZip.files[name]._data.uncompressedSize)}</li>`)
+            .join('');
+
+        // Show modal
+        document.getElementById('preview-modal').classList.add('show');
+
+        // UI: keep progress bar at 80 % until user confirms
+    }catch(err){
+        alert('Extraction failed: '+err.message);
+        resetExtractUI();
+    }
+}
+
+/* -------------------------------------------------
+   CONFIRM / CANCEL HANDLERS FOR THE PREVIEW MODAL
+--------------------------------------------------- */
+function closePreview(){
+    document.getElementById('preview-modal').classList.remove('show');
+    resetExtractUI();
+}
+function confirmExtraction(){
+    document.getElementById('preview-modal').classList.remove('show');
+    // Proceed with actual extraction (download)
+    extractAllFiles();
+}
+async function extractAllFiles(){
+    try{
+        updateProgress('extract',85,'Downloading files');
+        for(const name of Object.keys(pendingZip.files)){
+            const fileObj = pendingZip.files[name];
+            if(fileObj.dir) continue;
             const blob = await fileObj.async('blob');
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -485,14 +537,28 @@ async function startExtract(){
             a.click();
             URL.revokeObjectURL(url);
         }
-
         updateProgress('extract',100,'Done');
-        setTimeout(()=>{ progSec.classList.remove('active'); document.getElementById('extract-start').disabled = false; },1500);
+        setTimeout(()=>resetExtractUI(),1500);
     }catch(err){
-        alert('Extraction failed: '+err.message);
-        progSec.classList.remove('active');
-        document.getElementById('extract-start').disabled = false;
+        alert('Extraction failed during download: '+err.message);
+        resetExtractUI();
     }
+}
+
+/* -------------------------------------------------
+   UI RESET AFTER EXTRACT (new helper)
+--------------------------------------------------- */
+function resetExtractUI(){
+    // clear state
+    selectedPNG = null;
+    pendingZip = null;
+    pendingPayload = null;
+    document.getElementById('png-input').value = '';
+    document.getElementById('extract-pass').value = '';
+    document.getElementById('extract-start').disabled = true;
+    document.getElementById('extract-progress').classList.remove('active');
+    document.getElementById('png-info').classList.remove('show');
+    document.getElementById('png-details').innerHTML = '';
 }
 
 /* -------------------------------------------------
@@ -526,7 +592,6 @@ async function encryptData(data,password){
     out.set(new Uint8Array(ciphertext),salt.length+iv.length);
     return out;
 }
-
 async function decryptData(data,password){
     const enc = new TextEncoder();
     const salt = data.slice(0,16);
