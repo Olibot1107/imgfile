@@ -1,3 +1,4 @@
+we have a web verson but we do not sugest useing it on pngs that where made useing the python verson at all! [website](olibot1107.github.io/imgfile/)
 # how to use
 
 First, install dependencies:
