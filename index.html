@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>File Compressor – PNG steganography</title>
 <style>
-    /* ---------- BASIC STYLES (unchanged) ---------- */
+    /* ---------- BASIC STYLES ---------- */
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:Arial,Helvetica,sans-serif;background:#1a1a1a;color:#e0e0e0;min-height:100vh;padding:20px}
     .container{max-width:900px;margin:auto;background:#2d2d2d;border-radius:8px;padding:30px;box-shadow:0 4px 6px rgba(0,0,0,.3)}
@@ -56,7 +57,26 @@
     ::-webkit-scrollbar-thumb{background:#3d3d3d;border-radius:4px}
     ::-webkit-scrollbar-thumb:hover{background:#555}
 
-    /* ---------- MODAL (new) ---------- */
+    /* ---------- VISUAL EFFECTS ---------- */
+    .canvas-wrapper{position:relative;display:inline-block;margin:0 auto;}
+    .stats-overlay{
+        position:absolute;bottom:10px;left:10px;right:10px;
+        background:rgba(0,0,0,0.85);padding:10px;border-radius:4px;
+        font-size:12px;color:#00ff6e;font-family:monospace;
+        display:none;
+    }
+    .stats-overlay.show{display:block;}
+    .stats-row{display:flex;justify-content:space-between;margin:3px 0;}
+    .highlight-pixel{
+        position:absolute;border:2px solid #00ff6e;box-shadow:0 0 10px #00ff6e;
+        pointer-events:none;animation:pulse 0.5s ease-in-out;
+    }
+    @keyframes pulse{
+        0%,100%{transform:scale(1);opacity:0.8;}
+        50%{transform:scale(1.2);opacity:1;}
+    }
+
+    /* ---------- MODAL ---------- */
     .modal-backdrop{
         position:fixed;top:0;left:0;width:100vw;height:100vh;
         background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;
@@ -116,10 +136,9 @@
 
             <div class="setting-row checkbox-row">
                 <input type="checkbox" id="size-limit" checked>
-                <label for="size-limit">Enable 50 MB size limit</label>
+                <label for="size-limit">Enable 50 MB size limit</label>
             </div>
 
-            <!-- This checkbox only appears on mobile (forced fast‑mode) -->
             <div class="setting-row checkbox-row" id="fast-mode-row" style="display:none">
                 <input type="checkbox" id="fast-mode" checked disabled>
                 <label for="fast-mode">Fast mode (auto‑selected on mobile)</label>
@@ -131,13 +150,21 @@
         <div class="progress-section" id="compress-progress">
             <div class="progress-info">
                 <span id="compress-status">Processing…</span>
-                <span id="compress-percent">0 %</span>
+                <span id="compress-percent">0 %</span>
             </div>
             <div class="progress-bar-container">
                 <div class="progress-bar-fill" id="compress-bar"></div>
             </div>
             <div class="image-preview">
-                <canvas id="preview-canvas"></canvas>
+                <div class="canvas-wrapper">
+                    <canvas id="preview-canvas"></canvas>
+                    <div class="stats-overlay" id="stats-overlay">
+                        <div class="stats-row"><span>Pixels Encoded:</span><span id="stat-pixels">0</span></div>
+                        <div class="stats-row"><span>Bytes Written:</span><span id="stat-bytes">0</span></div>
+                        <div class="stats-row"><span>Progress:</span><span id="stat-progress">0%</span></div>
+                        <div class="stats-row"><span>Speed:</span><span id="stat-speed">0 px/s</span></div>
+                    </div>
+                </div>
             </div>
             <button class="btn download-btn" id="download-btn" onclick="downloadImage()" style="display:none">Download PNG</button>
         </div>
@@ -168,18 +195,29 @@
         <div class="progress-section" id="extract-progress">
             <div class="progress-info">
                 <span id="extract-status">Processing…</span>
-                <span id="extract-percent">0 %</span>
+                <span id="extract-percent">0 %</span>
             </div>
             <div class="progress-bar-container">
                 <div class="progress-bar-fill" id="extract-bar"></div>
             </div>
+            <div class="image-preview">
+                <div class="canvas-wrapper">
+                    <canvas id="preview-canvas"></canvas>
+                    <div class="stats-overlay" id="stats-overlay">
+                        <div class="stats-row"><span>Pixels Decoded:</span><span id="stat-pixels">0</span></div>
+                        <div class="stats-row"><span>Bytes Read:</span><span id="stat-bytes">0</span></div>
+                        <div class="stats-row"><span>Progress:</span><span id="stat-progress">0%</span></div>
+                        <div class="stats-row"><span>Speed:</span><span id="stat-speed">0 px/s</span></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="footer">Made by Olibot13 and ChatGPT</div>
+    <div class="footer">Made by Olibot13 and ChatGPT | Enhanced with Visual Effects</div>
 </div>
 
-<!-- ---------- MODAL FOR PREVIEW (new) ---------- -->
+<!-- ---------- MODAL FOR PREVIEW ---------- -->
 <div class="modal-backdrop" id="preview-modal">
     <div class="modal">
         <h2>Files to be extracted</h2>
@@ -198,12 +236,14 @@
 /* -------------------------------------------------
    GLOBAL STATE
 --------------------------------------------------- */
-let selectedFiles   = [];          // files for compression
-let selectedPNG     = null;        // PNG chosen for extraction
-let generatedBlob   = null;        // final PNG Blob
-let isMobile        = false;       // device detection
-let pendingZip      = null;        // ZIP object after preview (used on confirm)
-let pendingPayload  = null;        // raw payload (kept for completeness)
+let selectedFiles   = [];
+let selectedPNG     = null;
+let generatedBlob   = null;
+let isMobile        = false;
+let pendingZip      = null;
+let pendingPayload  = null;
+let animationFrame  = null;
+let isProcessing    = false;
 
 /* -------------------------------------------------
    DEVICE DETECTION
@@ -217,7 +257,7 @@ function detectDevice(){
 detectDevice();
 
 /* -------------------------------------------------
-   UI INITIALISATION (compression methods)
+   UI INITIALISATION
 --------------------------------------------------- */
 function populateMethods(){
     const select = document.getElementById('compress-method');
@@ -231,7 +271,7 @@ function populateMethods(){
     if(!isMobile){
         const best = document.createElement('option');
         best.value = 'deflate-best';
-        best.textContent = 'DEFLATE – best (level 9)';
+        best.textContent = 'DEFLATE – best (level 9)';
         select.appendChild(best);
 
         const store = document.createElement('option');
@@ -326,10 +366,11 @@ function handlePNG(file){
 }
 
 /* -------------------------------------------------
-   COMPRESSION LOGIC (unchanged except minor tweaks)
+   COMPRESSION LOGIC WITH VISUAL ANIMATION
 --------------------------------------------------- */
 async function startCompress(){
-    if(selectedFiles.length===0) return;
+    if(selectedFiles.length===0 || isProcessing) return;
+    isProcessing = true;
 
     const password    = document.getElementById('compress-pass').value.trim();
     const outputName  = document.getElementById('output-name').value || 'compressed.png';
@@ -340,7 +381,6 @@ async function startCompress(){
     progSec.classList.add('active');
     updateProgress('compress',0,'Creating ZIP');
 
-    // ZIP options based on method
     let zipOptions = {type:'uint8array'};
     if(method === 'deflate-best'){
         zipOptions.compression = 'DEFLATE';
@@ -361,7 +401,6 @@ async function startCompress(){
         const zipUint8 = await zip.generateAsync(zipOptions);
         updateProgress('compress',30,'ZIP created');
 
-        // ---------- ENCRYPTION ----------
         let payload = zipUint8;
         let encryptedFlag = 0;
         if(password){
@@ -375,10 +414,9 @@ async function startCompress(){
         }
         updateProgress('compress',55,'Payload ready');
 
-        // ---------- PACK HEADER ----------
         const lengthBytes = new Uint8Array(4);
         const view = new DataView(lengthBytes.buffer);
-        view.setUint32(0,payload.length);               // big‑endian
+        view.setUint32(0,payload.length);
         const header = new Uint8Array(1+4);
         header[0] = encryptedFlag;
         header.set(lengthBytes,1);
@@ -387,7 +425,6 @@ async function startCompress(){
         fullData.set(payload,header.length);
         updateProgress('compress',70,'Data packed');
 
-        // ---------- CANVAS ENCODING ----------
         const pixelsNeeded = Math.ceil(fullData.length / 3);
         const maxDimMobile = 1024;
         let dimension = Math.ceil(Math.sqrt(pixelsNeeded));
@@ -400,30 +437,73 @@ async function startCompress(){
         const imgData = ctx.createImageData(dimension,dimension);
         const dst = imgData.data;
 
-        // initialise white background
         for(let i=0;i<dst.length;i+=4){
             dst[i]=255;dst[i+1]=255;dst[i+2]=255;dst[i+3]=255;
         }
 
-        // copy payload bytes into RGB channels
-        for(let i=0;i<fullData.length;i++){
-            const pixelIdx = Math.floor(i/3);
-            const channel  = i%3; // 0=R,1=G,2=B
-            dst[pixelIdx*4 + channel] = fullData[i];
-        }
+        document.getElementById('stats-overlay').classList.add('show');
 
-        ctx.putImageData(imgData,0,0);
+        await encodeWithAnimation(fullData, dst, dimension, ctx, imgData);
+
         updateProgress('compress',90,'Canvas ready');
 
-        // ---------- EXPORT ----------
         generatedBlob = await new Promise(res=>canvas.toBlob(res,'image/png'));
         updateProgress('compress',100,'Done');
         document.getElementById('download-btn').style.display='block';
+        
+        setTimeout(()=>document.getElementById('stats-overlay').classList.remove('show'),2000);
     }catch(err){
         alert('Compression failed: '+err.message);
         progSec.classList.remove('active');
         document.getElementById('compress-start').disabled = false;
+        document.getElementById('stats-overlay').classList.remove('show');
+    }finally{
+        isProcessing = false;
     }
+}
+
+/* -------------------------------------------------
+   ANIMATED ENCODING FUNCTION
+--------------------------------------------------- */
+async function encodeWithAnimation(fullData, dst, dimension, ctx, imgData){
+    const totalPixels = Math.ceil(fullData.length / 3);
+    const batchSize = isMobile ? 500 : 200;
+    const startTime = Date.now();
+    
+    return new Promise(resolve=>{
+        let byteIndex = 0;
+        
+        function processChunk(){
+            const chunkEnd = Math.min(byteIndex + batchSize * 3, fullData.length);
+            
+            for(let i=byteIndex; i<chunkEnd; i++){
+                const pixelIdx = Math.floor(i/3);
+                const channel = i%3;
+                dst[pixelIdx*4 + channel] = fullData[i];
+            }
+            
+            byteIndex = chunkEnd;
+            const pixelsProcessed = Math.floor(byteIndex / 3);
+            const progress = (pixelsProcessed / totalPixels) * 100;
+            
+            const elapsed = (Date.now() - startTime) / 1000;
+            const speed = Math.round(pixelsProcessed / elapsed);
+            document.getElementById('stat-pixels').textContent = pixelsProcessed.toLocaleString() + ' / ' + totalPixels.toLocaleString();
+            document.getElementById('stat-bytes').textContent = formatBytes(byteIndex);
+            document.getElementById('stat-progress').textContent = Math.round(progress) + '%';
+            document.getElementById('stat-speed').textContent = speed.toLocaleString() + ' px/s';
+            
+            ctx.putImageData(imgData, 0, 0);
+            
+            if(byteIndex < fullData.length){
+                animationFrame = requestAnimationFrame(processChunk);
+            }else{
+                resolve();
+            }
+        }
+        
+        processChunk();
+    });
 }
 
 /* -------------------------------------------------
@@ -440,48 +520,47 @@ function downloadImage(){
 }
 
 /* -------------------------------------------------
-   EXTRACTION LOGIC – now includes a preview modal
+   EXTRACTION LOGIC WITH VISUAL ANIMATION
 --------------------------------------------------- */
 async function startExtract(){
-    if(!selectedPNG) return;
+    if(!selectedPNG || isProcessing) return;
+    isProcessing = true;
 
-    // UI reset for a new extraction
     document.getElementById('extract-start').disabled = true;
     const progSec = document.getElementById('extract-progress');
     progSec.classList.add('active');
     updateProgress('extract',5,'Loading PNG');
 
     try{
-        // ----- Load PNG and read raw bytes -----
         const img = await loadImage(selectedPNG);
         const canvas = document.createElement('canvas');
         canvas.width = img.width; canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img,0,0);
         const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
-        const src = imgData.data; // RGBA
+        const src = imgData.data;
 
-        // ----- Header -----
         updateProgress('extract',25,'Reading header');
-        const flag = src[0];               // R of pixel 0
+        const flag = src[0];
         const lenBytes = new Uint8Array(4);
-        lenBytes[0] = src[1];               // G of pixel0
-        lenBytes[1] = src[2];               // B of pixel0
-        lenBytes[2] = src[4];               // R of pixel1
-        lenBytes[3] = src[5];               // G of pixel1
+        lenBytes[0] = src[1];
+        lenBytes[1] = src[2];
+        lenBytes[2] = src[4];
+        lenBytes[3] = src[5];
         const dataLength = new DataView(lenBytes.buffer).getUint32(0);
 
-        // ----- Payload -----
         updateProgress('extract',45,'Extracting payload');
-        const payload = new Uint8Array(dataLength);
-        let dstIdx = 0;
-        for(let i=5;i<5+dataLength;i++){
-            const pixelIdx = Math.floor(i/3);
-            const channel  = i%3;
-            payload[dstIdx++] = src[pixelIdx*4 + channel];
-        }
+        
+        const previewCanvas = document.getElementById('preview-canvas');
+        previewCanvas.width = canvas.width;
+        previewCanvas.height = canvas.height;
+        const previewCtx = previewCanvas.getContext('2d');
+        previewCtx.drawImage(img, 0, 0);
+        
+        document.getElementById('stats-overlay').classList.add('show');
+        
+        const payload = await decodeWithAnimation(src, dataLength, previewCanvas, previewCtx);
 
-        // ----- Decrypt if needed -----
         let zipBytes = payload;
         if(flag===1){
             const password = document.getElementById('extract-pass').value.trim();
@@ -492,30 +571,75 @@ async function startExtract(){
             zipBytes = await decryptData(payload,password);
         }
 
-        // ----- Load ZIP for preview -----
         updateProgress('extract',80,'Reading archive');
         pendingZip = await JSZip.loadAsync(zipBytes);
-        pendingPayload = zipBytes; // keep a reference for later (not strictly needed)
+        pendingPayload = zipBytes;
 
-        // Build the preview list
         const listEl = document.getElementById('preview-list');
         listEl.innerHTML = Object.keys(pendingZip.files)
             .filter(name=>!pendingZip.files[name].dir)
             .map(name=>`<li>${name} – ${formatBytes(pendingZip.files[name]._data.uncompressedSize)}</li>`)
             .join('');
 
-        // Show modal
         document.getElementById('preview-modal').classList.add('show');
-
-        // UI: keep progress bar at 80 % until user confirms
+        
+        setTimeout(()=>document.getElementById('stats-overlay').classList.remove('show'),2000);
     }catch(err){
         alert('Extraction failed: '+err.message);
         resetExtractUI();
+        document.getElementById('stats-overlay').classList.remove('show');
+    }finally{
+        isProcessing = false;
     }
 }
 
 /* -------------------------------------------------
-   CONFIRM / CANCEL HANDLERS FOR THE PREVIEW MODAL
+   ANIMATED DECODING FUNCTION
+--------------------------------------------------- */
+async function decodeWithAnimation(src, dataLength, canvas, ctx){
+    const payload = new Uint8Array(dataLength);
+    const batchSize = isMobile ? 500 : 200;
+    const startTime = Date.now();
+    const totalPixels = Math.ceil(dataLength / 3);
+    
+    return new Promise(resolve=>{
+        let srcIdx = 5;
+        let dstIdx = 0;
+        
+        function processChunk(){
+            const chunkEnd = Math.min(dstIdx + batchSize, dataLength);
+            
+            for(let i=dstIdx; i<chunkEnd; i++){
+                const pixelIdx = Math.floor(srcIdx/3);
+                const channel = srcIdx%3;
+                payload[i] = src[pixelIdx*4 + channel];
+                srcIdx++;
+            }
+            
+            dstIdx = chunkEnd;
+            const progress = (dstIdx / dataLength) * 100;
+            
+            const elapsed = (Date.now() - startTime) / 1000;
+            const pixelsProcessed = Math.floor(dstIdx / 3);
+            const speed = Math.round(pixelsProcessed / elapsed);
+            document.getElementById('stat-pixels').textContent = pixelsProcessed.toLocaleString() + ' / ' + totalPixels.toLocaleString();
+            document.getElementById('stat-bytes').textContent = formatBytes(dstIdx);
+            document.getElementById('stat-progress').textContent = Math.round(progress) + '%';
+            document.getElementById('stat-speed').textContent = speed.toLocaleString() + ' px/s';
+            
+            if(dstIdx < dataLength){
+                animationFrame = requestAnimationFrame(processChunk);
+            }else{
+                resolve(payload);
+            }
+        }
+        
+        processChunk();
+    });
+}
+
+/* -------------------------------------------------
+   CONFIRM / CANCEL HANDLERS FOR PREVIEW MODAL
 --------------------------------------------------- */
 function closePreview(){
     document.getElementById('preview-modal').classList.remove('show');
@@ -523,9 +647,9 @@ function closePreview(){
 }
 function confirmExtraction(){
     document.getElementById('preview-modal').classList.remove('show');
-    // Proceed with actual extraction (download)
     extractAllFiles();
 }
+
 
 /* -------------------------------------------------
    EXTRACT ALL FILES – now creates ONE ZIP for download
@@ -534,27 +658,25 @@ async function extractAllFiles(){
     try{
         updateProgress('extract',85,'Creating output ZIP');
 
-        // If the original data was *not* encrypted we could just reuse the original
-        // zipBytes, but building a fresh ZIP guarantees consistent filenames
-        // and lets us add a friendly container name.
         const outZip = new JSZip();
-
-        // Add every file from the pendingZip into the new archive
         for(const name of Object.keys(pendingZip.files)){
             const fileObj = pendingZip.files[name];
-            if (fileObj.dir) continue;                 // skip folders (we never store them)
+            if (fileObj.dir) continue;
             const content = await fileObj.async('uint8array');
             outZip.file(name, content);
         }
 
-        // Generate the final zip blob
-        const zipBlob = await outZip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-        const zipName = (document.getElementById('output-name').value || 'extracted-files') + '.zip';
+        const zipBlob = await outZip.generateAsync({
+            type:'blob',
+            compression:'DEFLATE',
+            compressionOptions:{level:6}
+        });
 
-        // Trigger download
+        const zipName = (document.getElementById('output-name').value || 'extracted-files') + '.zip';
         const url = URL.createObjectURL(zipBlob);
         const a = document.createElement('a');
-        a.href = url; a.download = zipName;
+        a.href = url;
+        a.download = zipName;
         a.click();
         URL.revokeObjectURL(url);
 
@@ -567,10 +689,9 @@ async function extractAllFiles(){
 }
 
 /* -------------------------------------------------
-   UI RESET AFTER EXTRACT (new helper)
+   UI RESET AFTER EXTRACT (helper)
 --------------------------------------------------- */
 function resetExtractUI(){
-    // clear state
     selectedPNG = null;
     pendingZip = null;
     pendingPayload = null;
@@ -587,12 +708,12 @@ function resetExtractUI(){
 --------------------------------------------------- */
 function updateProgress(type, percent, status){
     document.getElementById(`${type}-status`).textContent = status;
-    document.getElementById(`${type}-percent`).textContent = Math.round(percent)+' %';
+    document.getElementById(`${type}-percent`).textContent = Math.round(percent)+' %';
     document.getElementById(`${type}-bar`).style.width = percent+'%';
 }
 
 /* -------------------------------------------------
-   ENCRYPTION / DECRYPTION (AES‑GCM, PBKDF2)
+   ENCRYPTION / DECRYPTION (AES-GCM, PBKDF2)
 --------------------------------------------------- */
 async function encryptData(data,password){
     const enc = new TextEncoder();
@@ -613,6 +734,7 @@ async function encryptData(data,password){
     out.set(new Uint8Array(ciphertext),salt.length+iv.length);
     return out;
 }
+
 async function decryptData(data,password){
     const enc = new TextEncoder();
     const salt = data.slice(0,16);
@@ -631,7 +753,7 @@ async function decryptData(data,password){
 }
 
 /* -------------------------------------------------
-   IMAGE LOADER UTILITY
+   IMAGE LOADER
 --------------------------------------------------- */
 function loadImage(file){
     return new Promise((res,rej)=>{
@@ -643,14 +765,14 @@ function loadImage(file){
 }
 
 /* -------------------------------------------------
-   BYTE‑FORMATTER
+   BYTE FORMATTER
 --------------------------------------------------- */
 function formatBytes(b){
-    if(b===0) return '0 B';
+    if(b===0) return '0 B';
     const k=1024;
     const sizes=['B','KB','MB','GB','TB'];
     const i=Math.floor(Math.log(b)/Math.log(k));
-    return (b/k**i).toFixed(2)+' '+sizes[i];
+    return (b/k**i).toFixed(2)+' '+sizes[i];
 }
 </script>
 </body>
