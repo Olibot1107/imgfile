@@ -200,17 +200,6 @@
             <div class="progress-bar-container">
                 <div class="progress-bar-fill" id="extract-bar"></div>
             </div>
-            <div class="image-preview">
-                <div class="canvas-wrapper">
-                    <canvas id="preview-canvas"></canvas>
-                    <div class="stats-overlay" id="stats-overlay">
-                        <div class="stats-row"><span>Pixels Decoded:</span><span id="stat-pixels">0</span></div>
-                        <div class="stats-row"><span>Bytes Read:</span><span id="stat-bytes">0</span></div>
-                        <div class="stats-row"><span>Progress:</span><span id="stat-progress">0%</span></div>
-                        <div class="stats-row"><span>Speed:</span><span id="stat-speed">0 px/s</span></div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -467,44 +456,60 @@ async function startCompress(){
 --------------------------------------------------- */
 async function encodeWithAnimation(fullData, dst, dimension, ctx, imgData){
     const totalPixels = Math.ceil(fullData.length / 3);
-    const batchSize = isMobile ? 500 : 200;
+    const totalBytes = fullData.length;
     const startTime = Date.now();
-    
-    return new Promise(resolve=>{
+
+    // target total duration (40s for large data)
+    const targetDuration = 40000;
+    const baseBatch = isMobile ? 800 : 500;
+    const minBatch = 200;
+    const maxBatch = 20000;
+
+    // dynamic speed control based on total size
+    // for small data, finish quickly; for large, pace to 40s
+    const totalEstimate = totalBytes / 50000; // rough speed estimate baseline
+    const duration = Math.min(Math.max(totalEstimate * 1000, 4000), targetDuration);
+    const adjustFactor = totalBytes / (duration / 16); // ~16ms per frame target
+
+    return new Promise(resolve => {
         let byteIndex = 0;
-        
+
         function processChunk(){
-            const chunkEnd = Math.min(byteIndex + batchSize * 3, fullData.length);
-            
-            for(let i=byteIndex; i<chunkEnd; i++){
-                const pixelIdx = Math.floor(i/3);
-                const channel = i%3;
-                dst[pixelIdx*4 + channel] = fullData[i];
+            const remaining = totalBytes - byteIndex;
+            let dynamicBatch = Math.min(Math.max(Math.round(adjustFactor / 3), minBatch), maxBatch);
+            dynamicBatch = Math.min(dynamicBatch, Math.ceil(remaining / 3));
+
+            const chunkEnd = Math.min(byteIndex + dynamicBatch * 3, totalBytes);
+
+            for(let i = byteIndex; i < chunkEnd; i++){
+                const pixelIdx = Math.floor(i / 3);
+                const channel = i % 3;
+                dst[pixelIdx * 4 + channel] = fullData[i];
             }
-            
+
             byteIndex = chunkEnd;
             const pixelsProcessed = Math.floor(byteIndex / 3);
-            const progress = (pixelsProcessed / totalPixels) * 100;
-            
+            const progress = pixelsProcessed / totalPixels;
             const elapsed = (Date.now() - startTime) / 1000;
-            const speed = Math.round(pixelsProcessed / elapsed);
-            document.getElementById('stat-pixels').textContent = pixelsProcessed.toLocaleString() + ' / ' + totalPixels.toLocaleString();
+            const estimatedSpeed = pixelsProcessed / elapsed;
+
+            document.getElementById('stat-pixels').textContent = `${pixelsProcessed.toLocaleString()} / ${totalPixels.toLocaleString()}`;
             document.getElementById('stat-bytes').textContent = formatBytes(byteIndex);
-            document.getElementById('stat-progress').textContent = Math.round(progress) + '%';
-            document.getElementById('stat-speed').textContent = speed.toLocaleString() + ' px/s';
-            
+            document.getElementById('stat-progress').textContent = Math.round(progress * 100) + '%';
+            document.getElementById('stat-speed').textContent = Math.round(estimatedSpeed).toLocaleString() + ' px/s';
+
             ctx.putImageData(imgData, 0, 0);
-            
-            if(byteIndex < fullData.length){
+
+            if(byteIndex < totalBytes){
                 animationFrame = requestAnimationFrame(processChunk);
-            }else{
+            } else {
                 resolve();
             }
         }
-        
         processChunk();
     });
 }
+
 
 /* -------------------------------------------------
    DOWNLOAD THE GENERATED PNG
@@ -523,75 +528,85 @@ function downloadImage(){
    EXTRACTION LOGIC WITH VISUAL ANIMATION
 --------------------------------------------------- */
 async function startExtract(){
-    if(!selectedPNG || isProcessing) return;
+    if (!selectedPNG || isProcessing) return;
     isProcessing = true;
 
     document.getElementById('extract-start').disabled = true;
     const progSec = document.getElementById('extract-progress');
     progSec.classList.add('active');
-    updateProgress('extract',5,'Loading PNG');
+    updateProgress('extract', 5, 'Loading PNG');
 
-    try{
+    try {
+        // Load PNG file into ImageData
         const img = await loadImage(selectedPNG);
         const canvas = document.createElement('canvas');
-        canvas.width = img.width; canvas.height = img.height;
+        canvas.width = img.width;
+        canvas.height = img.height;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(img,0,0);
-        const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const src = imgData.data;
 
-        updateProgress('extract',25,'Reading header');
+        updateProgress('extract', 25, 'Reading header');
+
+        // Extract header info
         const flag = src[0];
         const lenBytes = new Uint8Array(4);
         lenBytes[0] = src[1];
         lenBytes[1] = src[2];
-        lenBytes[2] = src[4];
-        lenBytes[3] = src[5];
-        const dataLength = new DataView(lenBytes.buffer).getUint32(0);
+        lenBytes[2] = src[3];
+        lenBytes[3] = src[4];
+        const dataLength = new DataView(lenBytes.buffer).getUint32(0, false);
 
-        updateProgress('extract',45,'Extracting payload');
-        
-        const previewCanvas = document.getElementById('preview-canvas');
-        previewCanvas.width = canvas.width;
-        previewCanvas.height = canvas.height;
-        const previewCtx = previewCanvas.getContext('2d');
-        previewCtx.drawImage(img, 0, 0);
-        
-        document.getElementById('stats-overlay').classList.add('show');
-        
-        const payload = await decodeWithAnimation(src, dataLength, previewCanvas, previewCtx);
+        updateProgress('extract', 45, 'Extracting payload');
 
-        let zipBytes = payload;
-        if(flag===1){
-            const password = document.getElementById('extract-pass').value.trim();
-            if(!password){
-                throw new Error('File is encrypted – password required');
+        // Decode payload instantly (no animation)
+        const payload = new Uint8Array(dataLength);
+        let srcIdx = 5;
+        for (let i = 0; i < dataLength; i++) {
+            const pixelIdx = Math.floor(srcIdx / 4);
+            const channel = srcIdx % 4;
+            if (channel === 3) { // skip alpha
+                srcIdx++;
             }
-            updateProgress('extract',65,'Decrypting');
-            zipBytes = await decryptData(payload,password);
+            payload[i] = src[srcIdx++];
         }
 
-        updateProgress('extract',80,'Reading archive');
+        let zipBytes = payload;
+
+        // Handle decryption if file was encrypted
+        if (flag === 1) {
+            const password = document.getElementById('extract-pass').value.trim();
+            if (!password) {
+                throw new Error('File is encrypted – password required');
+            }
+            updateProgress('extract', 65, 'Decrypting');
+            zipBytes = await decryptData(payload, password);
+        }
+
+        updateProgress('extract', 80, 'Reading archive');
+
+        // Load ZIP from bytes
         pendingZip = await JSZip.loadAsync(zipBytes);
         pendingPayload = zipBytes;
 
+        // Show file list in modal
         const listEl = document.getElementById('preview-list');
         listEl.innerHTML = Object.keys(pendingZip.files)
-            .filter(name=>!pendingZip.files[name].dir)
-            .map(name=>`<li>${name} – ${formatBytes(pendingZip.files[name]._data.uncompressedSize)}</li>`)
+            .filter(name => !pendingZip.files[name].dir)
+            .map(name => `<li>${name} – ${formatBytes(pendingZip.files[name]._data.uncompressedSize)}</li>`)
             .join('');
 
+        updateProgress('extract', 100, 'Ready');
         document.getElementById('preview-modal').classList.add('show');
-        
-        setTimeout(()=>document.getElementById('stats-overlay').classList.remove('show'),2000);
-    }catch(err){
-        alert('Extraction failed: '+err.message);
+    } catch (err) {
+        alert('Extraction failed: ' + err.message);
         resetExtractUI();
-        document.getElementById('stats-overlay').classList.remove('show');
-    }finally{
+    } finally {
         isProcessing = false;
     }
 }
+
 
 /* -------------------------------------------------
    ANIMATED DECODING FUNCTION
