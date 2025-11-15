@@ -22,7 +22,7 @@ IF "%choice%"=="1" (
 
 IF "%choice%"=="2" (
     echo Starting GUI...
-    python gui.py
+    python app.py
     goto :eof
 )
 

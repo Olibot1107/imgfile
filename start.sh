@@ -19,7 +19,7 @@ case $choice in
         ;;
     2)
         echo "Starting GUI..."
-        python3 gui.py
+        python3 app.py
         ;;
     3)
         echo "Installing dependencies..."
