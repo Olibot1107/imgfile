@@ -1,6 +1,7 @@
 #!/bin/bash
 echo "1: Run CLI"
 echo "2: Run GUI"
+echo "3: Install dependencies"
 echo "3: Exit"
 read -p "Enter your choice: " choice
 case $choice in
@@ -13,6 +14,10 @@ case $choice in
         python3 gui.py
         ;;
     3)
+        echo "Installing dependencies"
+        pip3 install -r requirements.txt
+        ;;
+    4)
         echo "Exiting"
         exit 0
         ;;

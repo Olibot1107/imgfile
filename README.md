@@ -1,19 +1,48 @@
-## Version 5.3
-## how to use
+# Version 5.4
+# how to use
 
 First, install dependencies:
-```bash
-pip install -r requirements.txt
+## Windows
+1. Download and install Python 3.10 from https://www.python.org/downloads/windows/
+2. Run
+```
+start.bat 3
 ```
 
-## GUI
-To run the graphical application:
-```bash
-python app.py
+## Linux
+1. Install Python 3.10 using your package manager, or run
+```
+sudo apt install python3-pip
+```
+2. Run
+```
+chmod +x start.sh
+./start.sh 3
 ```
 
-## CLI
-To run the command-line interface:
-```bash
-python cli.py
+# Start CLI
+
+## Windows
+1. Run
+```
+start.bat 1
+```
+
+## Linux
+1. Run
+```
+./start.sh 1
+```
+
+# Start GUI
+
+## Windows
+1. Run
+```
+start.bat 2
+```
+## Linux
+2. Run
+```
+./start.sh 2
 ```
