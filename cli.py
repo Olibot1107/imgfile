@@ -2,10 +2,12 @@ import os
 import sys
 import argparse
 from tqdm import tqdm
+from colorama import Fore, Back, Style, init
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder, get_decode_info
 
 def main():
+    init()  # Initialize colorama for colored terminal output
     parser = argparse.ArgumentParser(description="File Compressor CLI")
     subparsers = parser.add_subparsers(dest='command')
 
@@ -29,8 +31,8 @@ def main():
         extract_non_interactive(args)
     else:
         while True:
-            print("\nFile Compressor CLI")
-            print("===================")
+            print(Fore.CYAN + "\nFile Compressor CLI" + Style.RESET_ALL)
+            print(Fore.CYAN + "===================" + Style.RESET_ALL)
             print("1. Compress folder to PNG")
             print("2. Extract PNG to folder")
             print("3. Exit")
@@ -43,19 +45,19 @@ def main():
             elif choice == '3':
                 break
             else:
-                print("Invalid choice. Please try again.")
+                print(Fore.RED + "Invalid choice. Please try again." + Style.RESET_ALL)
 
 def compress_interactive():
-    print("\nCompress Folder to PNG")
-    print("======================")
+    print(Fore.YELLOW + "\nCompress Folder to PNG" + Style.RESET_ALL)
+    print(Fore.YELLOW + "======================" + Style.RESET_ALL)
     folder_path = input("Enter folder path to compress: ").strip()
     while not folder_path:
-        print("Folder path cannot be empty.")
+        print(Fore.RED + "Folder path cannot be empty." + Style.RESET_ALL)
         folder_path = input("Enter folder path to compress: ").strip()
 
     output_png = input("Enter output PNG file path (will add .png if no extension): ").strip()
     if not output_png:
-        print("Output path cannot be empty.")
+        print(Fore.RED + "Output path cannot be empty." + Style.RESET_ALL)
         return
     if not output_png.lower().endswith('.png'):
         output_png += '.png'
@@ -74,7 +76,7 @@ def compress_interactive():
     if not password:
         password = None
 
-    pbar = tqdm(total=100, unit='%', desc="Starting compression")
+    pbar = tqdm(total=100, unit='%', desc="Starting compression", colour='green')
     def progress_cb(p, msg):
         pbar.n = p
         pbar.desc = msg
@@ -83,10 +85,10 @@ def compress_interactive():
     try:
         encode_folder_to_png(folder_path, output_png, method, progress_callback=progress_cb, enable_max_limit=enable_max_limit, password=password)
         pbar.close()
-        print("\nCompression completed successfully!")
+        print(Fore.GREEN + "\nCompression completed successfully!" + Style.RESET_ALL)
     except Exception as e:
         pbar.close()
-        print(f"\nCompression failed: {e}")
+        print(Fore.RED + f"\nCompression failed: {e}" + Style.RESET_ALL)
 
 def compress_non_interactive(args):
     folder_path = args.folder
@@ -95,7 +97,7 @@ def compress_non_interactive(args):
     enable_max_limit = args.limit
     password = args.password
 
-    pbar = tqdm(total=100, unit='%', desc="Starting compression")
+    pbar = tqdm(total=100, unit='%', desc="Starting compression", colour='green')
     def progress_cb(p, msg):
         pbar.n = p
         pbar.desc = msg
@@ -104,10 +106,10 @@ def compress_non_interactive(args):
     try:
         encode_folder_to_png(folder_path, output_png, method, progress_callback=progress_cb, enable_max_limit=enable_max_limit, password=password)
         pbar.close()
-        print("\nCompression completed successfully!")
+        print(Fore.GREEN + "\nCompression completed successfully!" + Style.RESET_ALL)
     except Exception as e:
         pbar.close()
-        print(f"\nCompression failed: {e}")
+        print(Fore.RED + f"\nCompression failed: {e}" + Style.RESET_ALL)
 
 def extract_non_interactive(args):
     img_path = args.png
@@ -117,18 +119,18 @@ def extract_non_interactive(args):
     folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
 
     if password_info == "encrypted" and not password:
-        print("Password is required for extraction.")
+        print(Fore.RED + "Password is required for extraction." + Style.RESET_ALL)
         return
 
     size_mb = total_size / (1024 * 1024)
     protection = "Password protected" if password_info == "encrypted" else "No password protection"
-    print(f"Folder: {folder_name}")
+    print(Fore.BLUE + f"Folder: {folder_name}" + Style.RESET_ALL)
     print(f"Files: {file_count}")
     print(f"Total size: {size_mb:.2f} MB")
     print(f"Compression: {compression_method}")
-    print(f"Protection: {protection}")
+    print(Fore.YELLOW + f"Protection: {protection}" + Style.RESET_ALL)
 
-    pbar = tqdm(total=100, unit='%', desc="Starting extraction")
+    pbar = tqdm(total=100, unit='%', desc="Starting extraction", colour='green')
     def progress_cb(p, msg):
         pbar.n = p
         pbar.desc = msg
@@ -137,14 +139,14 @@ def extract_non_interactive(args):
     try:
         decode_png_to_folder(img_path, output_folder, progress_callback=progress_cb, password=password)
         pbar.close()
-        print("\nExtraction completed successfully!")
+        print(Fore.GREEN + "\nExtraction completed successfully!" + Style.RESET_ALL)
     except Exception as e:
         pbar.close()
-        print(f"\nExtraction failed: {e}")
+        print(Fore.RED + f"\nExtraction failed: {e}" + Style.RESET_ALL)
 
 def extract_interactive():
-    print("\nExtract PNG to Folder")
-    print("=====================")
+    print(Fore.MAGENTA + "\nExtract PNG to Folder" + Style.RESET_ALL)
+    print(Fore.MAGENTA + "=====================" + Style.RESET_ALL)
     img_path = input("Enter PNG file path to extract: ").strip()
     output_folder = input("Enter output folder path: ").strip()
 
@@ -152,25 +154,25 @@ def extract_interactive():
 
     size_mb = total_size / (1024 * 1024)
     protection = "Password protected" if password_info == "encrypted" else "No password protection"
-    print(f"\nFolder: {folder_name}")
+    print(Fore.BLUE + f"\nFolder: {folder_name}" + Style.RESET_ALL)
     print(f"Files: {file_count}")
     print(f"Total size: {size_mb:.2f} MB")
     print(f"Compression: {compression_method}")
-    print(f"Protection: {protection}")
+    print(Fore.YELLOW + f"Protection: {protection}" + Style.RESET_ALL)
     confirm = input("\nAre you sure you want to extract? (y/n): ").strip().lower()
     if confirm not in ('y', 'yes'):
-        print("Extraction cancelled.")
+        print(Fore.YELLOW + "Extraction cancelled." + Style.RESET_ALL)
         return
 
     if password_info == "encrypted":
         password = input("Enter password: ").strip()
         if not password:
-            print("Password is required.")
+            print(Fore.RED + "Password is required." + Style.RESET_ALL)
             return
     else:
         password = None
 
-    pbar = tqdm(total=100, unit='%', desc="Starting extraction")
+    pbar = tqdm(total=100, unit='%', desc="Starting extraction", colour='cyan')
     def progress_cb(p, msg):
         pbar.n = p
         pbar.desc = msg
@@ -179,10 +181,10 @@ def extract_interactive():
     try:
         decode_png_to_folder(img_path, output_folder, progress_callback=progress_cb, password=password)
         pbar.close()
-        print("\nExtraction completed successfully!")
+        print(Fore.GREEN + "\nExtraction completed successfully!" + Style.RESET_ALL)
     except Exception as e:
         pbar.close()
-        print(f"\nExtraction failed: {e}")
+        print(Fore.RED + f"\nExtraction failed: {e}" + Style.RESET_ALL)
 
 if __name__ == '__main__':
     main()

@@ -6,19 +6,20 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
+from colorama import Fore, Style
 
 def decode_png_to_folder(img_path, output_folder, progress_callback=None, password=None):
     try:
         if not os.path.exists(img_path):
             raise FileNotFoundError(f"Image not found: {img_path}")
 
-        print(f"Loading image: {img_path}")
+        print(Fore.CYAN + f"Loading image: {img_path}" + Style.RESET_ALL)
         img = Image.open(img_path)
 
         width, height = img.size
         mode = img.mode
         channels_per_pixel = 4 if mode == 'RGBA' else 3
-        print(f"Image size: {width}x{height} pixels, mode: {mode}, channels: {channels_per_pixel}")
+        print(Fore.BLUE + f"Image size: {width}x{height} pixels, mode: {mode}, channels: {channels_per_pixel}" + Style.RESET_ALL)
 
         if not os.path.exists(output_folder):
             os.makedirs(output_folder, exist_ok=True)
@@ -172,39 +173,39 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None, passwo
             key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
             fernet = Fernet(key)
             zip_data = fernet.decrypt(encrypted_data)
-            print("Password protection decrypted")
+            print(Fore.GREEN + "Password protection decrypted" + Style.RESET_ALL)
         else:
-            print("No password protection - proceeding with extraction")
+            print(Fore.GREEN + "No password protection - proceeding with extraction" + Style.RESET_ALL)
 
         zip_bytes = io.BytesIO(zip_data)
 
-        print("Extracting files from ZIP data...")
+        print(Fore.CYAN + "Extracting files from ZIP data..." + Style.RESET_ALL)
 
         try:
             with zipfile.ZipFile(zip_bytes, 'r') as zipf:
                 file_list = zipf.namelist()
-                print(f"ZIP contains {len(file_list)} files")
+                print(Fore.BLUE + f"ZIP contains {len(file_list)} files" + Style.RESET_ALL)
                 for idx, f in enumerate(file_list, start=1):
                     zipf.extract(f, output_folder)
                     if progress_callback and idx % max(1, len(file_list) // 100) == 0:
                         progress_callback(idx / len(file_list) * 100, f'Extracting files: {idx}/{len(file_list)}')
 
-            print(f"Successfully decoded {img_path} -> {output_folder}/")
+            print(Fore.GREEN + f"Successfully decoded {img_path} -> {output_folder}/" + Style.RESET_ALL)
 
         except zipfile.BadZipFile as e:
-            print(f"Error: The image does not contain a valid ZIP archive: {e}")
-            print(f"ZIP data size: {len(zip_data)} bytes")
+            print(Fore.RED + f"Error: The image does not contain a valid ZIP archive: {e}" + Style.RESET_ALL)
+            print(Fore.RED + f"ZIP data size: {len(zip_data)} bytes" + Style.RESET_ALL)
 
             if len(zip_data) > 100:
-                print(f"First 100 bytes: {zip_data[:100]}")
+                print(Fore.RED + f"First 100 bytes: {zip_data[:100]}" + Style.RESET_ALL)
             raise
         except Exception as e:
-            print(f"Unexpected error during ZIP extraction: {e}")
+            print(Fore.RED + f"Unexpected error during ZIP extraction: {e}" + Style.RESET_ALL)
             traceback.print_exc()
             raise
 
     except Exception as e:
-        print(f"Fatal error in decode_png_to_folder: {e}")
+        print(Fore.RED + f"Fatal error in decode_png_to_folder: {e}" + Style.RESET_ALL)
         traceback.print_exc()
         raise
 
@@ -218,7 +219,7 @@ def get_decode_info(img_path):
         if not os.path.exists(img_path):
             raise FileNotFoundError(f"Image not found: {img_path}")
 
-        print(f"Loading image for info: {img_path}")
+        print(Fore.CYAN + f"Loading image for info: {img_path}" + Style.RESET_ALL)
         img = Image.open(img_path)
 
         width, height = img.size

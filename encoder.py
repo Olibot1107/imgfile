@@ -4,6 +4,7 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
+from colorama import Fore, Style
 
 max_data_size = 500 * 1024 * 1024
 max_size = 90000
@@ -20,7 +21,7 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
             raise NotADirectoryError(f"Path is not a directory: {folder_path}")
 
 
-        print(f"Creating compressed archive from '{folder_path}' using {compression_method}...")
+        print(Fore.CYAN + f"Creating compressed archive from '{folder_path}' using {compression_method}..." + Style.RESET_ALL)
 
         zip_bytes = io.BytesIO()
 
@@ -56,11 +57,11 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
                     if progress_callback and processed % max(1, total_files // 100) == 0:
                         progress_callback((processed / total_files) * 100, f'Adding files: {processed}/{total_files}')
 
-        print("ZIP file created successfully.")
+        print(Fore.GREEN + "ZIP file created successfully." + Style.RESET_ALL)
 
         data = zip_bytes.getvalue()
 
-        print(f" ZIP size: {len(data)} bytes")
+        print(Fore.BLUE + f" ZIP size: {len(data)} bytes" + Style.RESET_ALL)
 
         if password:
             salt = os.urandom(16)
@@ -74,10 +75,10 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
             fernet = Fernet(key)
             data = salt + fernet.encrypt(data)
             password_info = "encrypted"
-            print("Password protection applied")
+            print(Fore.YELLOW + "Password protection applied" + Style.RESET_ALL)
         else:
             password_info = "none"
-            print("No password protection applied")
+            print(Fore.GREEN + "No password protection applied" + Style.RESET_ALL)
 
         pixels_per_byte = 4
         folder_name = os.path.basename(folder_path)
@@ -107,32 +108,40 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
         rgba_length = size * size * 4
         rgba_bytes = bytearray(b'\xFF' * rgba_length)
 
-        print(f" Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)...")
+        print(Fore.CYAN + f" Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)..." + Style.RESET_ALL)
 
-        print(f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}")
+        print(Fore.CYAN + f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}" + Style.RESET_ALL)
 
         for idx, b in enumerate(metadata):
             offset = idx * 4 + 3
             if offset < len(rgba_bytes):
                 rgba_bytes[offset] = b + 1
 
-        print(f"Metadata stored in {len(metadata)} alpha channels")
+        print(Fore.GREEN + f"Metadata stored in {len(metadata)} alpha channels" + Style.RESET_ALL)
 
         data_start_idx = len(metadata) * pixels_per_byte
         data_end_idx = data_start_idx + len(data)
         if data_end_idx <= len(rgba_bytes):
-            rgba_bytes[data_start_idx:data_end_idx] = data
+            # Store data in chunks to show progress and potentially speed up
+            chunk_size = 1024 * 1024  # 1MB chunks
+            total_data = len(data)
+            for i in range(0, total_data, chunk_size):
+                end_i = min(i + chunk_size, total_data)
+                rgba_bytes[data_start_idx + i : data_start_idx + end_i] = data[i:end_i]
+                if progress_callback:
+                    progress_val = 50 + (i / total_data) * 50  # From 50 to 100 during data storage
+                    progress_callback(progress_val, f'Storing data: {i // chunk_size + 1}/{ (total_data + chunk_size - 1) // chunk_size } chunks')
+            if progress_callback:
+                progress_callback(100, 'Complete')
         else:
             raise ValueError(f"Data ({len(data)} bytes) too large for image ({len(rgba_bytes)} bytes)")
 
-        if progress_callback:
-            progress_callback(100, 'Complete')
-        print(f"Data stored in {len(data)} RGBA channels.")
+        print(Fore.GREEN + f"Data stored in {len(data)} RGBA channels." + Style.RESET_ALL)
         img = Image.frombytes("RGBA", (size, size), rgba_bytes)
         img.save(output_png, optimize=True)
-        print(f"Saved compressed image as '{output_png}'")
+        print(Fore.GREEN + f"Saved compressed image as '{output_png}'" + Style.RESET_ALL)
 
     except Exception as e:
-        print(f"Fatal error in encode_folder_to_png: {e}")
+        print(Fore.RED + f"Fatal error in encode_folder_to_png: {e}" + Style.RESET_ALL)
         traceback.print_exc()
         raise
