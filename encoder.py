@@ -1,13 +1,12 @@
 from PIL import Image
-import os, zipfile, math, sys, tempfile, traceback, lzma, bz2, hashlib, secrets
+import os, zipfile, math, sys, traceback, lzma, bz2, hashlib, secrets, io
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
 
-# Constants for limits
-max_data_size = 500 * 1024 * 1024  # 500MB
-max_size = 90000  # pixels
+max_data_size = 500 * 1024 * 1024
+max_size = 90000
 
 def encode_folder_to_png(folder_path, output_png, compression_method='lzma', progress_callback=None, enable_max_limit=True, password=None):
     if not os.path.exists('tmp'):
@@ -23,130 +22,115 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
 
         print(f"Creating compressed archive from '{folder_path}' using {compression_method}...")
 
-        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, dir='tmp') as tmp_zip:
-            zip_path = tmp_zip.name
+        zip_bytes = io.BytesIO()
 
-        try:
+        if compression_method == 'lzma':
+            compression_type = zipfile.ZIP_LZMA
+            compresslevel = 1
+        elif compression_method == 'bz2':
+            compression_type = zipfile.ZIP_BZIP2
+            compresslevel = 1
+        elif compression_method == 'zlib':
+            compression_type = zipfile.ZIP_DEFLATED
+            compresslevel = 1
+        elif compression_method == 'zip_lzma':
+            compression_type = zipfile.ZIP_LZMA
+            compresslevel = 1
+        elif compression_method == 'zip_bz2':
+            compression_type = zipfile.ZIP_BZIP2
+            compresslevel = 1
+        else:
+            compression_type = zipfile.ZIP_LZMA
+            compresslevel = 1
 
-            if compression_method == 'lzma':
-                compression_type = zipfile.ZIP_LZMA
-            elif compression_method == 'bz2':
-                compression_type = zipfile.ZIP_BZIP2
-            elif compression_method == 'zlib':
-                compression_type = zipfile.ZIP_DEFLATED
-            elif compression_method == 'zip_lzma':
-                compression_type = zipfile.ZIP_LZMA
-            elif compression_method == 'zip_bz2':
-                compression_type = zipfile.ZIP_BZIP2
-            else:
-                compression_type = zipfile.ZIP_LZMA
+        with zipfile.ZipFile(zip_bytes, 'w', compression_type, compresslevel=compresslevel) as zipf:
+            total_files = sum(len(files) for _, _, files in os.walk(folder_path))
+            processed = 0
 
-            with zipfile.ZipFile(zip_path, 'w', compression_type, compresslevel=6) as zipf:
-                total_files = sum(len(files) for _, _, files in os.walk(folder_path))
-                processed = 0
+            for root, _, files in os.walk(folder_path):
+                for f in files:
+                    file_path = os.path.join(root, f)
+                    arcname = os.path.relpath(file_path, folder_path)
+                    zipf.write(file_path, arcname)
+                    processed += 1
+                    if progress_callback and processed % max(1, total_files // 100) == 0:
+                        progress_callback((processed / total_files) * 100, f'Adding files: {processed}/{total_files}')
 
-                for root, _, files in os.walk(folder_path):
-                    for f in files:
-                        file_path = os.path.join(root, f)
-                        arcname = os.path.relpath(file_path, folder_path)
-                        zipf.write(file_path, arcname)
-                        processed += 1
-                        if progress_callback:
-                            progress_callback( (processed / total_files) * 100, f'Adding files: {processed}/{total_files}' )
-                        print(f"  Added: {arcname} ({processed}/{total_files})")
-                        sys.stdout.flush()
+        print("ZIP file created successfully.")
 
-            print("ZIP file created successfully.")
+        data = zip_bytes.getvalue()
 
+        print(f" ZIP size: {len(data)} bytes")
 
-            with open(zip_path, "rb") as f:
-                data = f.read()
+        if password:
+            salt = os.urandom(16)
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=100000,
+            )
+            key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+            fernet = Fernet(key)
+            data = salt + fernet.encrypt(data)
+            password_info = "encrypted"
+            print("Password protection applied")
+        else:
+            password_info = "none"
+            print("No password protection applied")
 
-            print(f" ZIP size: {len(data)} bytes")
+        pixels_per_byte = 4
+        folder_name = os.path.basename(folder_path)
+        data_size = str(len(data))
+        compression_info = compression_method
+        metadata = f"{folder_name}\x00{data_size}\x00{compression_info}\x00{password_info}\x00".encode()
 
-            # Handle password protection
-            if password:
-                salt = os.urandom(16)
-                kdf = PBKDF2HMAC(
-                    algorithm=hashes.SHA256(),
-                    length=32,
-                    salt=salt,
-                    iterations=100000,
-                )
-                key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-                fernet = Fernet(key)
-                data = salt + fernet.encrypt(data)
-                password_info = "encrypted"
-                print("Password protection applied")
-            else:
-                password_info = "none"
-                print("No password protection applied")
+        meta_pixels = len(metadata)
+        data_pixels = math.ceil(len(data) / pixels_per_byte)
+        total_pixels_needed = meta_pixels + data_pixels
+        size = math.ceil(math.sqrt(total_pixels_needed))
 
+        if enable_max_limit:
+            if len(data) > max_data_size:
+                raise ValueError(f"Data size ({len(data)} bytes) exceeds maximum allowed size ({max_data_size} bytes). "
+                                f"Consider using smaller files or splitting into multiple archives.")
 
-            pixels_per_byte = 4
-            folder_name = os.path.basename(folder_path)
-            data_size = str(len(data))
-            compression_info = compression_method
-            metadata = f"{folder_name}\x00{data_size}\x00{compression_info}\x00{password_info}\x00".encode()
+            if size > max_size:
+                raise ValueError(f"Image would be too large ({size}x{size} pixels). "
+                                f"Maximum allowed size is {max_size}x{max_size} pixels. "
+                                f"Data size: {len(data)} bytes")
 
-            meta_pixels = len(metadata)
-            data_pixels = math.ceil(len(data) / pixels_per_byte)
-            total_pixels_needed = meta_pixels + data_pixels
-            size = math.ceil(math.sqrt(total_pixels_needed))
+        min_size = 100
+        if size < min_size:
+            size = min_size
 
+        rgba_length = size * size * 4
+        rgba_bytes = bytearray(b'\xFF' * rgba_length)
 
-            if enable_max_limit:
-                if len(data) > max_data_size:
-                    raise ValueError(f"Data size ({len(data)} bytes) exceeds maximum allowed size ({max_data_size} bytes). "
-                                    f"Consider using smaller files or splitting into multiple archives.")
+        print(f" Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)...")
 
-                if size > max_size:
-                    raise ValueError(f"Image would be too large ({size}x{size} pixels). "
-                                    f"Maximum allowed size is {max_size}x{max_size} pixels. "
-                                    f"Data size: {len(data)} bytes")
+        print(f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}")
 
+        for idx, b in enumerate(metadata):
+            offset = idx * 4 + 3
+            if offset < len(rgba_bytes):
+                rgba_bytes[offset] = b + 1
 
-            min_size = 100
-            if size < min_size:
-                size = min_size
+        print(f"Metadata stored in {len(metadata)} alpha channels")
 
+        data_start_idx = len(metadata) * pixels_per_byte
+        data_end_idx = data_start_idx + len(data)
+        if data_end_idx <= len(rgba_bytes):
+            rgba_bytes[data_start_idx:data_end_idx] = data
+        else:
+            raise ValueError(f"Data ({len(data)} bytes) too large for image ({len(rgba_bytes)} bytes)")
 
-            rgba_length = size * size * 4
-            rgba_bytes = bytearray(b'\xFF' * rgba_length)
-
-            print(f" Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)...")
-
-            print(f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}")
-
-
-            for idx, b in enumerate(metadata):
-                offset = idx * 4 + 3
-                if offset < len(rgba_bytes):
-                    rgba_bytes[offset] = b + 1
-
-            print(f"Metadata stored in {len(metadata)} alpha channels")
-
-
-            data_start_idx = len(metadata) * pixels_per_byte
-            data_end_idx = data_start_idx + len(data)
-            if data_end_idx <= len(rgba_bytes):
-                rgba_bytes[data_start_idx:data_end_idx] = data
-            else:
-
-                raise ValueError(f"Data ({len(data)} bytes) too large for image ({len(rgba_bytes)} bytes)")
-
-
-            if progress_callback:
-                progress_callback(100)
-            print(f"\rData stored in {len(data)} RGBA channels.             ")
-            img = Image.frombytes("RGBA", (size, size), rgba_bytes)
-            img.save(output_png, optimize=True)
-            print(f"Saved compressed image as '{output_png}'")
-
-        finally:
-
-            if os.path.exists(zip_path):
-                os.remove(zip_path)
+        if progress_callback:
+            progress_callback(100, 'Complete')
+        print(f"Data stored in {len(data)} RGBA channels.")
+        img = Image.frombytes("RGBA", (size, size), rgba_bytes)
+        img.save(output_png, optimize=True)
+        print(f"Saved compressed image as '{output_png}'")
 
     except Exception as e:
         print(f"Fatal error in encode_folder_to_png: {e}")

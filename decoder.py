@@ -23,13 +23,9 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None, passwo
         if not os.path.exists(output_folder):
             os.makedirs(output_folder, exist_ok=True)
 
-        print("Collecting all channel values...")
-
         all_bytes = img.tobytes()
 
-
         if mode != 'RGBA':
-
             new_bytes = bytearray()
             for i in range(0, len(all_bytes), channels_per_pixel):
                 new_bytes.extend(all_bytes[i:i+channels_per_pixel])
@@ -37,8 +33,6 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None, passwo
             all_bytes = bytes(new_bytes)
             channels_per_pixel = 4
 
-        total_pixels = width * height
-        print("Scanning for metadata channels...")
         metadata = ""
         metadata_channels_found = 0
         i = 0
@@ -50,18 +44,11 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None, passwo
                 if 0 <= original_byte <= 255:
                     metadata += chr(original_byte)
                     metadata_channels_found += 1
-                    print(f"Found metadata at channel {alpha_index}: {chr(original_byte)} (0x{original_byte:02x}) from alpha {a} (0x{a:02x})")
                     if chr(original_byte) == '\x00' and metadata.count('\x00') >= 4:
-                        print(f"Found end of metadata after {metadata_channels_found} channels")
                         break
-                else:
-                    print(f"Skipping invalid alpha value a={a}, original_byte={original_byte}")
             i += 1
             if i > 10000:
                 break
-
-        print(f"\rMetadata extraction complete. Found {metadata_channels_found} metadata channels")
-        print(f"Raw metadata: {repr(metadata)}")
 
 
         try:
@@ -199,9 +186,8 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None, passwo
                 print(f"ZIP contains {len(file_list)} files")
                 for idx, f in enumerate(file_list, start=1):
                     zipf.extract(f, output_folder)
-                    if progress_callback:
+                    if progress_callback and idx % max(1, len(file_list) // 100) == 0:
                         progress_callback(idx / len(file_list) * 100, f'Extracting files: {idx}/{len(file_list)}')
-                    print(f"  Extracted: {f} ({idx}/{len(file_list)})")
 
             print(f"Successfully decoded {img_path} -> {output_folder}/")
 

@@ -9,7 +9,6 @@ def main():
     parser = argparse.ArgumentParser(description="File Compressor CLI")
     subparsers = parser.add_subparsers(dest='command')
 
-    # Compress subcommand
     compress_parser = subparsers.add_parser('compress', help='Compress folder to PNG')
     compress_parser.add_argument('folder', help='Folder to compress')
     compress_parser.add_argument('output', help='Output PNG file')
@@ -17,7 +16,6 @@ def main():
     compress_parser.add_argument('--limit', default=True, type=bool, help='Enable max file limit')
     compress_parser.add_argument('--password', help='Password for encryption')
 
-    # Extract subcommand
     extract_parser = subparsers.add_parser('extract', help='Extract PNG to folder')
     extract_parser.add_argument('png', help='PNG file to extract')
     extract_parser.add_argument('output_folder', help='Output folder')
@@ -30,7 +28,6 @@ def main():
     elif args.command == 'extract':
         extract_non_interactive(args)
     else:
-        # Interactive mode
         while True:
             print("\nFile Compressor CLI")
             print("===================")
@@ -117,15 +114,12 @@ def extract_non_interactive(args):
     output_folder = args.output_folder
     password = args.password
 
-    # Get decode info
     folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
 
-    # Check password
     if password_info == "encrypted" and not password:
         print("Password is required for extraction.")
         return
 
-    # Display info
     size_mb = total_size / (1024 * 1024)
     protection = "Password protected" if password_info == "encrypted" else "No password protection"
     print(f"Folder: {folder_name}")
@@ -154,10 +148,8 @@ def extract_interactive():
     img_path = input("Enter PNG file path to extract: ").strip()
     output_folder = input("Enter output folder path: ").strip()
 
-    # Get info to check if password needed
     folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
 
-    # Display info and confirm
     size_mb = total_size / (1024 * 1024)
     protection = "Password protected" if password_info == "encrypted" else "No password protection"
     print(f"\nFolder: {folder_name}")
