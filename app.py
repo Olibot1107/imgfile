@@ -15,14 +15,23 @@ from decoder import decode_png_to_folder, get_decode_info
 
 
 def check_and_run_autorun_gui(output_folder):
+    import sys
+    script_paths = []
+    script_py = os.path.join(output_folder, 'autorun.py')
+    if os.path.exists(script_py):
+        script_paths.append(script_py)
+
     if os.name == 'nt':
-        script_name = 'autorun.bat'
+        script_name_tmp = 'autorun.bat'
     else:
-        script_name = 'autorun.sh'
+        script_name_tmp = 'autorun.sh'
+    script_shell = os.path.join(output_folder, script_name_tmp)
+    if os.path.exists(script_shell):
+        script_paths.append(script_shell)
 
-    script_path = os.path.join(output_folder, script_name)
-
-    if os.path.exists(script_path):
+    if script_paths:
+        script_path = script_paths[0]
+        script_name = os.path.basename(script_path)
         try:
             with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
@@ -49,33 +58,21 @@ def check_and_run_autorun_gui(output_folder):
 
                 def run_script_thread():
                     try:
-                        if os.name == 'nt':
-                            process = subprocess.Popen(script_path, cwd=output_folder, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
-                        else:
-                            os.chmod(script_path, 0o755)
-                            process = subprocess.Popen(['sh', script_path], cwd=output_folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
-
-                        # Read output in real-time
-                        # Real-time output
-                        while True:
-                            output = process.stdout.readline()
-                            if output:
-                                root.after(0, lambda: log_text.insert('1.0', f"{output}"))
-                            if process.poll() is not None:
-                                break
-
-                        # Read any remaining output
-                        for line in process.stdout:
-                            root.after(0, lambda: log_text.insert('1.0', f"{line}"))
-                        for line in process.stderr:
-                            root.after(0, lambda: log_text.insert('1.0', f"[ERR] {line}"))
-
-                        if process.returncode == 0:
-                            root.after(0, lambda: log_text.insert('1.0', "Script executed successfully.\n"))
-                        else:
-                            root.after(0, lambda: log_text.insert('1.0', f"Script failed with return code {process.returncode}.\n"))
+                        if os.name == 'nt':  # Windows
+                            if script_path.endswith('.py'):
+                                command = f"start cmd /k python \"{script_path}\""
+                            else:
+                                command = f"start cmd /k \"{script_path}\""
+                            os.system(command)
+                        else:  # Unix/Linux/Mac
+                            if script_path.endswith('.py'):
+                                bash_cmd = f'python "{script_path}"'
+                            else:
+                                bash_cmd = f'chmod +x "{script_path}" && "{script_path}"'
+                            os.system(f'xterm -e sh -c "cd \"{output_folder}\" && {bash_cmd}"')
+                        log_text.insert('1.0', "Terminal window opened with the script.\n")
                     except Exception as e:
-                        root.after(0, lambda: log_text.insert('1.0', f"Failed to run script: {e}\n"))
+                        log_text.insert('1.0', f"Failed to open terminal: {e}\n")
 
                 threading.Thread(target=run_script_thread, daemon=True).start()
             else:
@@ -254,17 +251,14 @@ def decode_action():
     if not output_folder:
         return
 
-    # Get decode info
     folder_name, file_count, total_size, compression_method, password_info, metadata_channels_found = get_decode_info(img_path)
 
-    # Show confirmation popup
     size_mb = total_size / (1024 * 1024)
     protection = "Password protected" if password_info == "encrypted" else "No password protection"
     message = f"Folder: {folder_name}\nFiles: {file_count}\nTotal size: {size_mb:.2f} MB\nCompression: {compression_method}\nProtection: {protection}\n\nAre you sure you want to extract?"
     if not messagebox.askyesno("Confirm Extraction", message):
         return
 
-    # Prompt for password if needed
     password = None
     if password_info == "encrypted":
         password = simpledialog.askstring("Password Required", "Enter password:", show='*')
@@ -274,7 +268,6 @@ def decode_action():
 
     root.after(0, lambda: log_text.delete('1.0', tk.END))  # Clear log
 
-    # Create image visualization in main window
     img = Image.open(img_path)
     width, height = img.size
     scale_factor = 650 / max(width, height)
@@ -293,12 +286,10 @@ def decode_action():
     def update_highlight(percent, message='', file='', start_offset=0, end_offset=0):
         progress_bar.config(value=percent)
         progress_label.config(text=message)
-        # Clear previous overlays
         for ov in overlays:
             canvas.delete(ov)
         overlays.clear()
         if file and start_offset < end_offset:
-            # Calculate pixel range
             byte_start = data_start_idx + start_offset
             pixel_start = byte_start // 4
             x1 = pixel_start % width
@@ -320,8 +311,6 @@ def decode_action():
         try:
             def log_cb(msg):
                 root.after(0, lambda: log_text.insert('1.0', msg + '\n'))
-
-                # Check line count and trim if necessary
                 def trim_log():
                     line_count = int(log_text.index('end-1c').split('.')[0])
                     if line_count > 30:
@@ -365,7 +354,6 @@ def create_main_window():
     left_frame.grid(row=0, column=0, sticky='nwes')
     left_frame.pack_propagate(False)
 
-    # Application title
     title_label = tk.Label(
         left_frame,
         text="File Compressor",

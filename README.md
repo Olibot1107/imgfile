@@ -1,4 +1,4 @@
-# Version 7.2
+# Version 7.6
 
 ## how to use
 First, install dependencies:
@@ -48,7 +48,7 @@ start.bat 2
 ```
 
 ## Autorun Script
-if the png contains a file called `autorun.bat` or `autorun.sh`, it will be shown to the user and they can choose to run it or skip it.
+if the png contains a file called `autorun.bat` or `autorun.sh` or `autorun.py`, it will be shown to the user and they can choose to run it or skip it.
 
 ## License
 This project is licensed under the Apache License 2.0.

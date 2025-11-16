@@ -8,14 +8,22 @@ from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder, get_decode_info
 
 def check_and_run_autorun(output_folder):
+    script_paths = []
+    script_py = os.path.join(output_folder, 'autorun.py')
+    if os.path.exists(script_py):
+        script_paths.append(script_py)
+
     if os.name == 'nt':
         script_name = 'autorun.bat'
     else:
         script_name = 'autorun.sh'
+    script_shell = os.path.join(output_folder, script_name)
+    if os.path.exists(script_shell):
+        script_paths.append(script_shell)
 
-    script_path = os.path.join(output_folder, script_name)
-
-    if os.path.exists(script_path):
+    if script_paths:
+        script_path = script_paths[0]
+        script_name = os.path.basename(script_path)
         print(Fore.YELLOW + f"Autorun script found: {script_name}" + Style.RESET_ALL)
         try:
             with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -28,8 +36,9 @@ def check_and_run_autorun(output_folder):
             if confirm in ('y', 'yes'):
                 print(Fore.YELLOW + "Running script..." + Style.RESET_ALL)
                 try:
-                    # Don't capture output so it prints to console in real-time
-                    if os.name == 'nt':
+                    if script_path.endswith('.py'):
+                        result = subprocess.run([sys.executable, script_path], cwd=output_folder, capture_output=False)
+                    elif os.name == 'nt':
                         result = subprocess.run(script_path, cwd=output_folder, shell=True, capture_output=False)
                     else:
                         os.chmod(script_path, 0o755)
@@ -46,7 +55,7 @@ def check_and_run_autorun(output_folder):
             print(Fore.RED + f"Error reading autorun script: {e}" + Style.RESET_ALL)
 
 def main():
-    init()  # Initialize colorama for colored terminal output
+    init()
     parser = argparse.ArgumentParser(description="File Compressor CLI")
     subparsers = parser.add_subparsers(dest='command')
 
