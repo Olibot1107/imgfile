@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
 from colorama import Fore, Style
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def decode_png_to_folder(img_path, output_folder, progress_callback=None, password=None, log_callback=None):
     try:
@@ -182,18 +183,34 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None, passwo
         print(Fore.CYAN + "Extracting files from ZIP data..." + Style.RESET_ALL)
 
         try:
+            file_info = []
+            with zipfile.ZipFile(zip_bytes, 'r') as zipf_preview:
+                cumulative_offset = 0
+                for f in zipf_preview.namelist():
+                    info = zipf_preview.getinfo(f)
+                    compressed_size = info.compress_size if info.compress_size > 0 else info.file_size
+                    start_offset = cumulative_offset
+                    end_offset = cumulative_offset + compressed_size
+                    file_info.append((f, start_offset, end_offset))
+                    cumulative_offset = end_offset
+
             with zipfile.ZipFile(zip_bytes, 'r') as zipf:
                 file_list = zipf.namelist()
                 print(Fore.BLUE + f"ZIP contains {len(file_list)} files" + Style.RESET_ALL)
-                for idx, f in enumerate(file_list, start=1):
-                    zipf.extract(f, output_folder)
-                    msg = f"Extracted: {f}"
-                    if log_callback:
-                        log_callback(msg)
-                    else:
-                        print(Fore.GREEN + msg + Style.RESET_ALL)
-                    if progress_callback and idx % max(1, len(file_list) // 100) == 0:
-                        progress_callback(idx / len(file_list) * 100, f'Extracting files: {idx}/{len(file_list)}')
+                with ThreadPoolExecutor() as executor:
+                    futures = {executor.submit(zipf.extract, f, output_folder): (f, start_offset, end_offset) for f, start_offset, end_offset in file_info}
+                    extracted = 0
+                    for future in as_completed(futures):
+                        f, start_offset, end_offset = futures[future]
+                        extracted += 1
+                        msg = f"Extracted: {f}"
+                        if log_callback:
+                            log_callback(msg)
+                        else:
+                            print(Fore.GREEN + msg + Style.RESET_ALL)
+                        if progress_callback:
+                            percent = (extracted / len(file_list)) * 100
+                            progress_callback(percent, f'Extracting {f}: {extracted}/{len(file_list)}', f, start_offset, end_offset)
 
             print(Fore.GREEN + f"Successfully decoded {img_path} -> {output_folder}/" + Style.RESET_ALL)
 
@@ -287,8 +304,8 @@ def get_decode_info(img_path):
             file_count = 0
             total_size = 0
 
-        return folder_name, file_count, total_size, compression_method, password_info
+        return folder_name, file_count, total_size, compression_method, password_info, metadata_channels_found
 
     except Exception as e:
         print(f"Error getting decode info: {e}")
-        return "Unknown", 0, 0, "Unknown"
+        return "Unknown", 0, 0, "Unknown", 0

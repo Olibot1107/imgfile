@@ -3,6 +3,9 @@ import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, simpledialog, scrolledtext
+from PIL import Image, ImageTk
+Image.MAX_IMAGE_PIXELS = None
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
 
@@ -168,6 +171,7 @@ def decode_action():
     Handle the extraction action: select PNG and output folder,
     then initiate decoding in background thread.
     """
+    global main_frame
     img_path = filedialog.askopenfilename(
         title="Select compressed PNG file",
         filetypes=[("PNG Images", "*.png")]
@@ -180,7 +184,7 @@ def decode_action():
         return
 
     # Get decode info
-    folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
+    folder_name, file_count, total_size, compression_method, password_info, metadata_channels_found = get_decode_info(img_path)
 
     # Show confirmation popup
     size_mb = total_size / (1024 * 1024)
@@ -199,21 +203,50 @@ def decode_action():
 
     root.after(0, lambda: log_text.delete('1.0', tk.END))  # Clear log
 
-    def decode_worker():
-        start_time = time.time()
-        pbar = tqdm(total=100, unit='%', desc="Extracting")
-        try:
-            def progress_cb(percent, message='Extracting'):
-                elapsed = time.time() - start_time
-                eta = (elapsed / (percent / 100)) - elapsed if percent > 0 else 0
-                eta_str = f"ETA: {int(eta)}s" if eta > 0 else ""
-                root.after(0, lambda: progress_bar.config(value=percent))
-                root.after(0, lambda: progress_label.config(
-                    text=f"{message}: {percent:.1f}% {eta_str}"))
-                pbar.n = percent
-                pbar.desc = message
-                pbar.refresh()
+    # Create image visualization in main window
+    img = Image.open(img_path)
+    width, height = img.size
+    scale_factor = 650 / max(width, height)
+    new_width = int(width * scale_factor)
+    new_height = int(height * scale_factor)
+    scaled_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    canvas = tk.Canvas(main_frame, width=new_width, height=new_height, bg=FRAME_BG)
+    canvas.photo = ImageTk.PhotoImage(scaled_img)
+    canvas.create_image(0, 0, anchor='nw', image=canvas.photo)
+    canvas.grid(row=0, column=1, sticky='nwes')
+    main_frame.grid_columnconfigure(1, minsize=new_width, weight=0)
+    root.geometry(f"{520 + new_width}x650")  # 500 left + 20 padding + image
+    overlays = []
+    data_start_idx = metadata_channels_found * 4
 
+    def update_highlight(percent, message='', file='', start_offset=0, end_offset=0):
+        progress_bar.config(value=percent)
+        progress_label.config(text=message)
+        # Clear previous overlays
+        for ov in overlays:
+            canvas.delete(ov)
+        overlays.clear()
+        if file and start_offset < end_offset:
+            # Calculate pixel range
+            byte_start = data_start_idx + start_offset
+            pixel_start = byte_start // 4
+            x1 = pixel_start % width
+            y1 = pixel_start // width
+            byte_end = data_start_idx + end_offset - 1
+            pixel_end = byte_end // 4
+            x2 = pixel_end % width
+            y2 = pixel_end // width
+            sx1 = int(x1 * new_width / width)
+            sy1 = int(y1 * new_height / height)
+            sx2 = int((x2 + 1) * new_width / width)
+            sy2 = int((y2 + 1) * new_height / height)
+            overlays.append(canvas.create_rectangle(sx1, sy1, sx2, sy2, outline='red', width=3))
+            if sx2 - sx1 > 100 and sy2 - sy1 > 50:
+                overlays.append(canvas.create_text((sx1 + sx2)//2, (sy1 + sy2)//2, text=f"Processing: {os.path.basename(file)}", fill='red', font=('Helvetica', 14, 'bold')))
+        root.update_idletasks()
+
+    def decode_worker():
+        try:
             def log_cb(msg):
                 root.after(0, lambda: log_text.insert('1.0', msg + '\n'))
 
@@ -224,24 +257,25 @@ def decode_action():
                         log_text.delete('31.0', 'end')
                 root.after(50, trim_log)
 
-            decode_png_to_folder(img_path, output_folder, progress_cb, password, log_callback=log_cb)
-            pbar.close()
+            decode_png_to_folder(img_path, output_folder, update_highlight, password, log_callback=log_cb)
             root.after(0, lambda: messagebox.showinfo(
                 "Success", f"Files extracted to '{output_folder}'!"))
         except Exception as e:
-            pbar.close()
             root.after(0, lambda e=e: messagebox.showerror(
                 "Error", f"Extraction failed: {str(e)}"))
         finally:
             root.after(0, lambda: progress_bar.config(value=0))
             root.after(0, lambda: progress_label.config(text="Idle"))
+            canvas.grid_remove()
+            root.geometry(WINDOW_SIZE)
+            main_frame.grid_columnconfigure(1, minsize=0)
 
     threading.Thread(target=decode_worker, daemon=True).start()
 
 
 def create_main_window():
     """Create and configure the main application window."""
-    global root, progress_bar, progress_label, log_text
+    global root, progress_bar, progress_label, log_text, main_frame
 
     root = tk.Tk()
     root.title(WINDOW_TITLE)
@@ -251,10 +285,17 @@ def create_main_window():
 
     main_frame = tk.Frame(root, bg=FRAME_BG)
     main_frame.pack(padx=20, pady=20, fill="both", expand=True)
+    main_frame.grid_columnconfigure(0, weight=0, minsize=500)
+    main_frame.grid_columnconfigure(1, weight=0)
+    main_frame.grid_rowconfigure(0, weight=1)
+
+    left_frame = tk.Frame(main_frame, bg=FRAME_BG, width=500)
+    left_frame.grid(row=0, column=0, sticky='nwes')
+    left_frame.pack_propagate(False)
 
     # Application title
     title_label = tk.Label(
-        main_frame,
+        left_frame,
         text="File Compressor",
         font=TITLE_FONT,
         fg=TITLE_COLOR,
@@ -262,7 +303,7 @@ def create_main_window():
     )
     title_label.pack(pady=(0, 20))
 
-    buttons_frame = tk.Frame(main_frame, bg=FRAME_BG)
+    buttons_frame = tk.Frame(left_frame, bg=FRAME_BG)
     buttons_frame.pack()
 
     compress_btn = tk.Button(
@@ -291,8 +332,8 @@ def create_main_window():
     )
     extract_btn.pack(pady=(10, 20))
 
-    progress_frame = tk.Frame(main_frame, bg=FRAME_BG)
-    progress_frame.pack(pady=(10, 0))
+    progress_frame = tk.Frame(left_frame, bg=FRAME_BG)
+    progress_frame.pack(pady=10)
 
     progress_bar = ttk.Progressbar(
         progress_frame,
@@ -312,28 +353,28 @@ def create_main_window():
     progress_label.pack(pady=10)
 
     log_label = tk.Label(
-        main_frame,
+        left_frame,
         text="Log:",
         font=LABEL_FONT,
         fg="#FFFFFF",
         bg=FRAME_BG
     )
-    log_label.pack(pady=(10, 5))
+    log_label.pack(pady=(10,5))
 
-    log_frame = tk.Frame(main_frame, bg=FRAME_BG)
+    log_frame = tk.Frame(left_frame, bg=FRAME_BG)
     log_frame.pack(fill="both", expand=True, padx=10, pady=(0,10))
 
     log_text = tk.Text(log_frame, bg="#000000", fg="#FFFFFF", font=("Helvetica", 10), height=15, wrap=tk.WORD)
     log_text.pack(fill="both", expand=True)
 
     footer_label = tk.Label(
-        main_frame,
+        left_frame,
         text="Made by Olibot13 and ChatGPT",
         font=FOOTER_FONT,
         fg=FOOTER_COLOR,
         bg=FRAME_BG
     )
-    footer_label.pack(side="bottom", pady=(20, 0))
+    footer_label.pack(side="bottom", pady=20)
 
     root.mainloop()
 
