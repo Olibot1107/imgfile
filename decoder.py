@@ -197,7 +197,7 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None, passwo
             with zipfile.ZipFile(zip_bytes, 'r') as zipf:
                 file_list = zipf.namelist()
                 print(Fore.BLUE + f"ZIP contains {len(file_list)} files" + Style.RESET_ALL)
-                with ThreadPoolExecutor() as executor:
+                with ThreadPoolExecutor(max_workers=2) as executor:
                     futures = {executor.submit(zipf.extract, f, output_folder): (f, start_offset, end_offset) for f, start_offset, end_offset in file_info}
                     extracted = 0
                     for future in as_completed(futures):
