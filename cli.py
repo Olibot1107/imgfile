@@ -28,11 +28,12 @@ def check_and_run_autorun(output_folder):
             if confirm in ('y', 'yes'):
                 print(Fore.YELLOW + "Running script..." + Style.RESET_ALL)
                 try:
+                    # Don't capture output so it prints to console in real-time
                     if os.name == 'nt':
-                        result = subprocess.run(script_path, cwd=output_folder, shell=True)
+                        result = subprocess.run(script_path, cwd=output_folder, shell=True, capture_output=False)
                     else:
                         os.chmod(script_path, 0o755)
-                        result = subprocess.run(['sh', script_path], cwd=output_folder)
+                        result = subprocess.run(['sh', script_path], cwd=output_folder, capture_output=False)
                     if result.returncode == 0:
                         print(Fore.GREEN + "Script executed successfully." + Style.RESET_ALL)
                     else:

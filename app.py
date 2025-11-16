@@ -46,22 +46,38 @@ def check_and_run_autorun_gui(output_folder):
             root.wait_window(dialog)
             if result_var.get():
                 log_text.insert('1.0', f"Running {script_name}...\n")
-                try:
-                    if os.name == 'nt':
-                        result = subprocess.run(script_path, cwd=output_folder, shell=True, capture_output=True, text=True)
-                    else:
-                        os.chmod(script_path, 0o755)
-                        result = subprocess.run(['sh', script_path], cwd=output_folder, capture_output=True, text=True)
-                    if result.returncode == 0:
-                        log_text.insert('1.0', "Script executed successfully.\n")
-                        if result.stdout:
-                            log_text.insert('1.0', f"Output: {result.stdout}\n")
-                    else:
-                        log_text.insert('1.0', f"Script failed with return code {result.returncode}.\n")
-                        if result.stderr:
-                            log_text.insert('1.0', f"Error: {result.stderr}\n")
-                except Exception as e:
-                    log_text.insert('1.0', f"Failed to run script: {e}\n")
+
+                def run_script_thread():
+                    try:
+                        if os.name == 'nt':
+                            process = subprocess.Popen(script_path, cwd=output_folder, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
+                        else:
+                            os.chmod(script_path, 0o755)
+                            process = subprocess.Popen(['sh', script_path], cwd=output_folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
+
+                        # Read output in real-time
+                        # Real-time output
+                        while True:
+                            output = process.stdout.readline()
+                            if output:
+                                root.after(0, lambda: log_text.insert('1.0', f"{output}"))
+                            if process.poll() is not None:
+                                break
+
+                        # Read any remaining output
+                        for line in process.stdout:
+                            root.after(0, lambda: log_text.insert('1.0', f"{line}"))
+                        for line in process.stderr:
+                            root.after(0, lambda: log_text.insert('1.0', f"[ERR] {line}"))
+
+                        if process.returncode == 0:
+                            root.after(0, lambda: log_text.insert('1.0', "Script executed successfully.\n"))
+                        else:
+                            root.after(0, lambda: log_text.insert('1.0', f"Script failed with return code {process.returncode}.\n"))
+                    except Exception as e:
+                        root.after(0, lambda: log_text.insert('1.0', f"Failed to run script: {e}\n"))
+
+                threading.Thread(target=run_script_thread, daemon=True).start()
             else:
                 log_text.insert('1.0', "Script execution skipped.\n")
         except Exception as e:
