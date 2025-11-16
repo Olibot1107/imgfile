@@ -7,7 +7,7 @@ from colorama import Fore, Back, Style, init
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder, get_decode_info
 
-def check_and_run_autorun(output_folder):
+def check_and_run_autorun(output_folder, auto_confirm=False):
     script_paths = []
     script_py = os.path.join(output_folder, 'autorun.py')
     if os.path.exists(script_py):
@@ -32,17 +32,21 @@ def check_and_run_autorun(output_folder):
             print(Fore.CYAN + "-" * 40 + Style.RESET_ALL)
             print(script_content)
             print(Fore.CYAN + "-" * 40 + Style.RESET_ALL)
-            confirm = input("Are you sure you want to run this script? (type 'yes' to confirm): ").strip().lower()
+            if auto_confirm:
+                confirm = 'y'
+                print(Fore.YELLOW + "Auto-confirming script execution..." + Style.RESET_ALL)
+            else:
+                confirm = input("Are you sure you want to run this script? (type 'yes' to confirm): ").strip().lower()
             if confirm in ('y', 'yes'):
                 print(Fore.YELLOW + "Running script..." + Style.RESET_ALL)
                 try:
                     if script_path.endswith('.py'):
                         result = subprocess.run([sys.executable, script_name], cwd=output_folder, capture_output=False)
                     elif os.name == 'nt':
-                        result = subprocess.run(script_name, cwd=output_folder, shell=True, capture_output=False)
+                        result = subprocess.run([script_name], cwd=output_folder, shell=True, capture_output=False)
                     else:
                         os.chmod(script_path, 0o755)
-                        result = subprocess.run(['sh', script_name], cwd=output_folder, capture_output=False)
+                        result = subprocess.run(['bash', '-c', script_name], cwd=output_folder, capture_output=False)
                     if result.returncode == 0:
                         print(Fore.GREEN + "Script executed successfully." + Style.RESET_ALL)
                     else:
@@ -188,7 +192,7 @@ def extract_non_interactive(args):
         decode_png_to_folder(img_path, output_folder, progress_callback=progress_cb, password=password)
         pbar.close()
         print(Fore.GREEN + "\nExtraction completed successfully!" + Style.RESET_ALL)
-        check_and_run_autorun(output_folder)
+        check_and_run_autorun(output_folder, auto_confirm=True)
     except Exception as e:
         pbar.close()
         print(Fore.RED + f"\nExtraction failed: {e}" + Style.RESET_ALL)
