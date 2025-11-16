@@ -1,4 +1,4 @@
-# Version 6.9
+# Version 7.0
 
 ## how to use
 First, install dependencies:
@@ -22,7 +22,7 @@ chmod +x start.sh
 
 ## Start CLI
 
-### #Windows
+### Windows
 1. Run
 ```
 start.bat 1
