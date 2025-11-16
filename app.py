@@ -60,13 +60,13 @@ def check_and_run_autorun_gui(output_folder):
                     try:
                         if os.name == 'nt':  # Windows
                             if script_path.endswith('.py'):
-                                command = f"start cmd /k python \"{script_path}\""
+                                command = f"start cmd /k \"{sys.executable}\" \"{script_path}\""
                             else:
                                 command = f"start cmd /k \"{script_path}\""
                             os.system(command)
                         else:  # Unix/Linux/Mac
                             if script_path.endswith('.py'):
-                                bash_cmd = f'python "{script_path}"'
+                                bash_cmd = f'"{sys.executable}" "{script_path}"'
                             else:
                                 bash_cmd = f'chmod +x "{script_path}" && "{script_path}"'
                             os.system(f'xterm -e sh -c "cd \"{output_folder}\" && {bash_cmd}"')

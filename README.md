@@ -1,4 +1,4 @@
-# Version 7.6
+# Version 7.7
 
 ## how to use
 First, install dependencies:
