@@ -37,12 +37,12 @@ def check_and_run_autorun(output_folder):
                 print(Fore.YELLOW + "Running script..." + Style.RESET_ALL)
                 try:
                     if script_path.endswith('.py'):
-                        result = subprocess.run([sys.executable, script_path], cwd=output_folder, capture_output=False)
+                        result = subprocess.run([sys.executable, script_name], cwd=output_folder, capture_output=False)
                     elif os.name == 'nt':
-                        result = subprocess.run(script_path, cwd=output_folder, shell=True, capture_output=False)
+                        result = subprocess.run(script_name, cwd=output_folder, shell=True, capture_output=False)
                     else:
                         os.chmod(script_path, 0o755)
-                        result = subprocess.run(['sh', script_path], cwd=output_folder, capture_output=False)
+                        result = subprocess.run(['sh', script_name], cwd=output_folder, capture_output=False)
                     if result.returncode == 0:
                         print(Fore.GREEN + "Script executed successfully." + Style.RESET_ALL)
                     else:
