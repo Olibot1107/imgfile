@@ -125,7 +125,7 @@ def compress_interactive():
         password = None
 
     pbar = tqdm(total=100, unit='%', desc="Starting compression", colour='green')
-    def progress_cb(p, msg):
+    def progress_cb(p, msg, *args):
         pbar.n = p
         pbar.desc = msg
         pbar.refresh()
@@ -179,7 +179,7 @@ def extract_non_interactive(args):
     print(Fore.YELLOW + f"Protection: {protection}" + Style.RESET_ALL)
 
     pbar = tqdm(total=100, unit='%', desc="Starting extraction", colour='green')
-    def progress_cb(p, msg):
+    def progress_cb(p, msg, *args):
         pbar.n = p
         pbar.desc = msg
         pbar.refresh()
@@ -222,7 +222,7 @@ def extract_interactive():
         password = None
 
     pbar = tqdm(total=100, unit='%', desc="Starting extraction", colour='cyan')
-    def progress_cb(p, msg):
+    def progress_cb(p, msg, *args):
         pbar.n = p
         pbar.desc = msg
         pbar.refresh()
