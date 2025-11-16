@@ -116,7 +116,7 @@ def extract_non_interactive(args):
     output_folder = args.output_folder
     password = args.password
 
-    folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
+    folder_name, file_count, total_size, compression_method, password_info, _ = get_decode_info(img_path)
 
     if password_info == "encrypted" and not password:
         print(Fore.RED + "Password is required for extraction." + Style.RESET_ALL)
@@ -150,7 +150,7 @@ def extract_interactive():
     img_path = input("Enter PNG file path to extract: ").strip()
     output_folder = input("Enter output folder path: ").strip()
 
-    folder_name, file_count, total_size, compression_method, password_info = get_decode_info(img_path)
+    folder_name, file_count, total_size, compression_method, password_info, _ = get_decode_info(img_path)
 
     size_mb = total_size / (1024 * 1024)
     protection = "Password protected" if password_info == "encrypted" else "No password protection"
