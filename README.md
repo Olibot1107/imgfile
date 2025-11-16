@@ -1,4 +1,4 @@
-# Version 6.6
+# Version 6.7
 
 ## how to use
 First, install dependencies:
@@ -46,3 +46,10 @@ start.bat 2
 ```
 ./start.sh 2
 ```
+
+## License
+This project is licensed under the Apache License 2.0.
+
+## Contributing
+Contributions are welcome! Please open an issue or submit a pull request.
+We appreciate any help in improving the project.
