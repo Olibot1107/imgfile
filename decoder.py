@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
 from colorama import Fore, Style
 
-def decode_png_to_folder(img_path, output_folder, progress_callback=None, password=None):
+def decode_png_to_folder(img_path, output_folder, progress_callback=None, password=None, log_callback=None):
     try:
         if not os.path.exists(img_path):
             raise FileNotFoundError(f"Image not found: {img_path}")
@@ -187,6 +187,11 @@ def decode_png_to_folder(img_path, output_folder, progress_callback=None, passwo
                 print(Fore.BLUE + f"ZIP contains {len(file_list)} files" + Style.RESET_ALL)
                 for idx, f in enumerate(file_list, start=1):
                     zipf.extract(f, output_folder)
+                    msg = f"Extracted: {f}"
+                    if log_callback:
+                        log_callback(msg)
+                    else:
+                        print(Fore.GREEN + msg + Style.RESET_ALL)
                     if progress_callback and idx % max(1, len(file_list) // 100) == 0:
                         progress_callback(idx / len(file_list) * 100, f'Extracting files: {idx}/{len(file_list)}')
 

@@ -9,7 +9,7 @@ from colorama import Fore, Style
 max_data_size = 500 * 1024 * 1024
 max_size = 90000
 
-def encode_folder_to_png(folder_path, output_png, compression_method='lzma', progress_callback=None, enable_max_limit=True, password=None):
+def encode_folder_to_png(folder_path, output_png, compression_method='lzma', progress_callback=None, enable_max_limit=True, password=None, log_callback=None):
     if not os.path.exists('tmp'):
         os.makedirs('tmp')
 
@@ -21,7 +21,11 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
             raise NotADirectoryError(f"Path is not a directory: {folder_path}")
 
 
-        print(Fore.CYAN + f"Creating compressed archive from '{folder_path}' using {compression_method}..." + Style.RESET_ALL)
+        msg = f"Creating compressed archive from '{folder_path}' using {compression_method}..."
+        if log_callback:
+            log_callback(msg)
+        else:
+            print(Fore.CYAN + msg + Style.RESET_ALL)
 
         zip_bytes = io.BytesIO()
 
@@ -53,15 +57,28 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
                     file_path = os.path.join(root, f)
                     arcname = os.path.relpath(file_path, folder_path)
                     zipf.write(file_path, arcname)
+                    msg = f"Added: {arcname}"
+                    if log_callback:
+                        log_callback(msg)
+                    else:
+                        print(Fore.CYAN + msg + Style.RESET_ALL)
                     processed += 1
                     if progress_callback and processed % max(1, total_files // 100) == 0:
                         progress_callback((processed / total_files) * 100, f'Adding files: {processed}/{total_files}')
 
-        print(Fore.GREEN + "ZIP file created successfully." + Style.RESET_ALL)
+        msg = "ZIP file created successfully."
+        if log_callback:
+            log_callback(msg)
+        else:
+            print(Fore.GREEN + msg + Style.RESET_ALL)
 
         data = zip_bytes.getvalue()
 
-        print(Fore.BLUE + f" ZIP size: {len(data)} bytes" + Style.RESET_ALL)
+        msg = f"ZIP size: {len(data)} bytes"
+        if log_callback:
+            log_callback(msg)
+        else:
+            print(Fore.BLUE + msg + Style.RESET_ALL)
 
         if password:
             salt = os.urandom(16)
@@ -75,10 +92,18 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
             fernet = Fernet(key)
             data = salt + fernet.encrypt(data)
             password_info = "encrypted"
-            print(Fore.YELLOW + "Password protection applied" + Style.RESET_ALL)
+            msg = "Password protection applied"
+            if log_callback:
+                log_callback(msg)
+            else:
+                print(Fore.YELLOW + msg + Style.RESET_ALL)
         else:
             password_info = "none"
-            print(Fore.GREEN + "No password protection applied" + Style.RESET_ALL)
+            msg = "No password protection applied"
+            if log_callback:
+                log_callback(msg)
+            else:
+                print(Fore.GREEN + msg + Style.RESET_ALL)
 
         pixels_per_byte = 4
         folder_name = os.path.basename(folder_path)
@@ -108,16 +133,28 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
         rgba_length = size * size * 4
         rgba_bytes = bytearray(b'\xFF' * rgba_length)
 
-        print(Fore.CYAN + f" Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)..." + Style.RESET_ALL)
+        msg = f"Creating RGBA image of size {size}x{size} ({pixels_per_byte} bytes per pixel)..."
+        if log_callback:
+            log_callback(msg)
+        else:
+            print(Fore.CYAN + msg + Style.RESET_ALL)
 
-        print(Fore.CYAN + f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}" + Style.RESET_ALL)
+        msg = f"Storing metadata: folder='{folder_name}', size={data_size}, compression={compression_info}"
+        if log_callback:
+            log_callback(msg)
+        else:
+            print(Fore.CYAN + msg + Style.RESET_ALL)
 
         for idx, b in enumerate(metadata):
             offset = idx * 4 + 3
             if offset < len(rgba_bytes):
                 rgba_bytes[offset] = b + 1
 
-        print(Fore.GREEN + f"Metadata stored in {len(metadata)} alpha channels" + Style.RESET_ALL)
+        msg = f"Metadata stored in {len(metadata)} alpha channels"
+        if log_callback:
+            log_callback(msg)
+        else:
+            print(Fore.GREEN + msg + Style.RESET_ALL)
 
         data_start_idx = len(metadata) * pixels_per_byte
         data_end_idx = data_start_idx + len(data)
@@ -136,10 +173,18 @@ def encode_folder_to_png(folder_path, output_png, compression_method='lzma', pro
         else:
             raise ValueError(f"Data ({len(data)} bytes) too large for image ({len(rgba_bytes)} bytes)")
 
-        print(Fore.GREEN + f"Data stored in {len(data)} RGBA channels." + Style.RESET_ALL)
+        msg = f"Data stored in {len(data)} RGBA channels."
+        if log_callback:
+            log_callback(msg)
+        else:
+            print(Fore.GREEN + msg + Style.RESET_ALL)
         img = Image.frombytes("RGBA", (size, size), rgba_bytes)
         img.save(output_png, optimize=True)
-        print(Fore.GREEN + f"Saved compressed image as '{output_png}'" + Style.RESET_ALL)
+        msg = f"Saved compressed image as '{output_png}'"
+        if log_callback:
+            log_callback(msg)
+        else:
+            print(Fore.GREEN + msg + Style.RESET_ALL)
 
     except Exception as e:
         print(Fore.RED + f"Fatal error in encode_folder_to_png: {e}" + Style.RESET_ALL)

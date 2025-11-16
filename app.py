@@ -1,27 +1,32 @@
 import os
 import threading
 import time
-from tkinter import filedialog, messagebox, ttk, simpledialog
 import tkinter as tk
+from tkinter import filedialog, messagebox, ttk, simpledialog, scrolledtext
+
 from tqdm import tqdm
 
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder, get_decode_info
 
 WINDOW_TITLE = "File Compressor"
-WINDOW_SIZE = "440x380"
-COMPRESS_WINDOW_SIZE = "400x450"
-EXTRACT_WINDOW_SIZE = "350x200"
+WINDOW_SIZE = "500x650"
+COMPRESS_WINDOW_SIZE = "450x500"
+EXTRACT_WINDOW_SIZE = "400x250"
 
-TITLE_FONT = ("Arial", 20, "bold")
-LABEL_FONT = ("Arial", 12, "bold")
-SMALL_FONT = ("Arial", 8, "italic")
-BUTTON_FONT = ("Arial", 11)
-FOOTER_FONT = ("Arial", 9)
+TITLE_FONT = ("Helvetica", 24, "bold")
+LABEL_FONT = ("Helvetica", 14, "bold")
+SMALL_FONT = ("Helvetica", 10, "italic")
+BUTTON_FONT = ("Helvetica", 12)
+FOOTER_FONT = ("Helvetica", 10)
 
-TITLE_COLOR = "#00FF6E"
-STATUS_COLOR = "#0000FF"
-FOOTER_COLOR = "#666666"
+BG_COLOR = "#1E1E1E"  # Dark gray background
+FRAME_BG = "#2D2D2D"  # Slightly lighter gray for frames
+TITLE_COLOR = "#FFD700"  # Gold
+STATUS_COLOR = "#87CEEB"  # Sky blue
+FOOTER_COLOR = "#B0B0B0"  # Light gray
+BUTTON_BG = "#00BFFF"
+BUTTON_FG = "#000000"
 
 COMPRESSION_METHODS = [
     ("LZMA (Best compression)", "lzma"),
@@ -37,6 +42,8 @@ def encode_action():
     Handle the compression action: select folder, choose settings,
     and initiate encoding in background thread.
     """
+    root.after(0, lambda: log_text.delete('1.0', tk.END))  # Clear log
+
     folder_path = filedialog.askdirectory(title="Select folder to compress")
     if not folder_path:
         return
@@ -44,11 +51,12 @@ def encode_action():
     compress_window = tk.Toplevel(root)
     compress_window.title("Compression Settings")
     compress_window.geometry(COMPRESS_WINDOW_SIZE)
+    compress_window.configure(bg=FRAME_BG)
     compress_window.transient(root)
     compress_window.grab_set()
 
     tk.Label(compress_window, text="Select Compression Method:",
-             font=LABEL_FONT).pack(pady=10)
+             font=LABEL_FONT, bg=FRAME_BG, fg=TITLE_COLOR).pack(pady=10)
 
     compression_var = tk.StringVar(value="lzma")
 
@@ -67,7 +75,7 @@ def encode_action():
         variable=enable_limit_var
     ).pack(anchor="w", padx=20, pady=10)
 
-    tk.Label(compress_window, text="Password (optional):", font=LABEL_FONT).pack(pady=10)
+    tk.Label(compress_window, text="Password (optional):", font=LABEL_FONT, bg=FRAME_BG, fg=TITLE_COLOR).pack(pady=10)
     password_var = tk.StringVar()
     password_entry = tk.Entry(compress_window, textvariable=password_var, show='*')
     password_entry.pack(pady=5)
@@ -107,13 +115,17 @@ def encode_action():
                     pbar.desc = message
                     pbar.refresh()
 
+                def log_cb(msg):
+                    root.after(0, lambda: log_text.insert('1.0', msg + '\n'))
+
                 encode_folder_to_png(
                     folder_path,
                     output_path,
                     compression_method,
                     progress_cb,
                     enable_max_limit=enable_limit_var.get(),
-                    password=password
+                    password=password,
+                    log_callback=log_cb
                 )
                 pbar.close()
                 root.after(0, lambda: messagebox.showinfo(
@@ -135,13 +147,19 @@ def encode_action():
         compress_window,
         text="Compress",
         command=proceed_compression,
-        width=15
+        bg=BUTTON_BG,
+        fg=BUTTON_FG,
+        font=BUTTON_FONT,
+        width=18
     ).pack(pady=15)
     tk.Button(
         compress_window,
         text="Cancel",
         command=compress_window.destroy,
-        width=15
+        bg=BUTTON_BG,
+        fg=BUTTON_FG,
+        font=BUTTON_FONT,
+        width=18
     ).pack(pady=5)
 
 
@@ -179,6 +197,8 @@ def decode_action():
             messagebox.showerror("Error", "Password is required for extraction.")
             return
 
+    root.after(0, lambda: log_text.delete('1.0', tk.END))  # Clear log
+
     def decode_worker():
         start_time = time.time()
         pbar = tqdm(total=100, unit='%', desc="Extracting")
@@ -194,7 +214,17 @@ def decode_action():
                 pbar.desc = message
                 pbar.refresh()
 
-            decode_png_to_folder(img_path, output_folder, progress_cb, password)
+            def log_cb(msg):
+                root.after(0, lambda: log_text.insert('1.0', msg + '\n'))
+
+                # Check line count and trim if necessary
+                def trim_log():
+                    line_count = int(log_text.index('end-1c').split('.')[0])
+                    if line_count > 30:
+                        log_text.delete('31.0', 'end')
+                root.after(50, trim_log)
+
+            decode_png_to_folder(img_path, output_folder, progress_cb, password, log_callback=log_cb)
             pbar.close()
             root.after(0, lambda: messagebox.showinfo(
                 "Success", f"Files extracted to '{output_folder}'!"))
@@ -211,73 +241,99 @@ def decode_action():
 
 def create_main_window():
     """Create and configure the main application window."""
-    global root, progress_bar, progress_label
+    global root, progress_bar, progress_label, log_text
 
     root = tk.Tk()
     root.title(WINDOW_TITLE)
     root.geometry(WINDOW_SIZE)
     root.resizable(False, False)
+    root.configure(bg=BG_COLOR)
 
-    main_frame = ttk.Frame(root)
-    main_frame.pack(padx=15, pady=15, fill="both", expand=True)
+    main_frame = tk.Frame(root, bg=FRAME_BG)
+    main_frame.pack(padx=20, pady=20, fill="both", expand=True)
 
     # Application title
     title_label = tk.Label(
         main_frame,
         text="File Compressor",
         font=TITLE_FONT,
-        fg=TITLE_COLOR
+        fg=TITLE_COLOR,
+        bg=FRAME_BG
     )
-    title_label.pack(pady=(0, 15))
+    title_label.pack(pady=(0, 20))
 
-    buttons_frame = ttk.Frame(main_frame)
+    buttons_frame = tk.Frame(main_frame, bg=FRAME_BG)
     buttons_frame.pack()
 
-    style = ttk.Style()
-    style.configure("TButton", font=BUTTON_FONT, padding=6)
-
-    compress_btn = ttk.Button(
+    compress_btn = tk.Button(
         buttons_frame,
         text="Compress Folder to PNG",
         command=encode_action,
-        width=40
+        font=BUTTON_FONT,
+        bg=BUTTON_BG,
+        fg=BUTTON_FG,
+        width=35,
+        relief=tk.RAISED,
+        bd=3
     )
-    compress_btn.pack(pady=(0, 8))
+    compress_btn.pack(pady=(0, 10))
 
-    extract_btn = ttk.Button(
+    extract_btn = tk.Button(
         buttons_frame,
         text="Extract PNG to Folder",
         command=decode_action,
-        width=40
+        font=BUTTON_FONT,
+        bg=BUTTON_BG,
+        fg=BUTTON_FG,
+        width=35,
+        relief=tk.RAISED,
+        bd=3
     )
-    extract_btn.pack(pady=(8, 10))
+    extract_btn.pack(pady=(10, 20))
 
-    progress_frame = ttk.Frame(main_frame)
+    progress_frame = tk.Frame(main_frame, bg=FRAME_BG)
     progress_frame.pack(pady=(10, 0))
 
     progress_bar = ttk.Progressbar(
         progress_frame,
         orient="horizontal",
-        length=380,
+        length=420,
         mode="determinate"
     )
-    progress_bar.pack(pady=5)
+    progress_bar.pack(pady=10)
 
-    progress_label = ttk.Label(
+    progress_label = tk.Label(
         progress_frame,
         text="Idle",
         font=BUTTON_FONT,
-        foreground=STATUS_COLOR
+        fg=STATUS_COLOR,
+        bg=FRAME_BG
     )
-    progress_label.pack(pady=5)
+    progress_label.pack(pady=10)
 
-    footer_label = ttk.Label(
+    log_label = tk.Label(
+        main_frame,
+        text="Log:",
+        font=LABEL_FONT,
+        fg="#FFFFFF",
+        bg=FRAME_BG
+    )
+    log_label.pack(pady=(10, 5))
+
+    log_frame = tk.Frame(main_frame, bg=FRAME_BG)
+    log_frame.pack(fill="both", expand=True, padx=10, pady=(0,10))
+
+    log_text = tk.Text(log_frame, bg="#000000", fg="#FFFFFF", font=("Helvetica", 10), height=15, wrap=tk.WORD)
+    log_text.pack(fill="both", expand=True)
+
+    footer_label = tk.Label(
         main_frame,
         text="Made by Olibot13 and ChatGPT",
         font=FOOTER_FONT,
-        foreground=FOOTER_COLOR
+        fg=FOOTER_COLOR,
+        bg=FRAME_BG
     )
-    footer_label.pack(side="bottom", pady=(15, 0))
+    footer_label.pack(side="bottom", pady=(20, 0))
 
     root.mainloop()
 
