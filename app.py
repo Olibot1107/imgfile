@@ -28,7 +28,7 @@ FRAME_BG = "#2D2D2D"  # Slightly lighter gray for frames
 TITLE_COLOR = "#FFD700"  # Gold
 STATUS_COLOR = "#87CEEB"  # Sky blue
 FOOTER_COLOR = "#B0B0B0"  # Light gray
-BUTTON_BG = "#00BFFF"
+BUTTON_BG = "#FFFFFF"
 BUTTON_FG = "#000000"
 
 COMPRESSION_METHODS = [
