@@ -1,10 +1,48 @@
 import os
 import sys
 import argparse
+import subprocess
 from tqdm import tqdm
 from colorama import Fore, Back, Style, init
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder, get_decode_info
+
+def check_and_run_autorun(output_folder):
+    if os.name == 'nt':
+        script_name = 'autorun.bat'
+    else:
+        script_name = 'autorun.sh'
+
+    script_path = os.path.join(output_folder, script_name)
+
+    if os.path.exists(script_path):
+        print(Fore.YELLOW + f"Autorun script found: {script_name}" + Style.RESET_ALL)
+        try:
+            with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
+                script_content = f.read()
+            print("Script content:")
+            print(Fore.CYAN + "-" * 40 + Style.RESET_ALL)
+            print(script_content)
+            print(Fore.CYAN + "-" * 40 + Style.RESET_ALL)
+            confirm = input("Are you sure you want to run this script? (type 'yes' to confirm): ").strip().lower()
+            if confirm in ('y', 'yes'):
+                print(Fore.YELLOW + "Running script..." + Style.RESET_ALL)
+                try:
+                    if os.name == 'nt':
+                        result = subprocess.run(script_path, cwd=output_folder, shell=True)
+                    else:
+                        os.chmod(script_path, 0o755)
+                        result = subprocess.run(['sh', script_path], cwd=output_folder)
+                    if result.returncode == 0:
+                        print(Fore.GREEN + "Script executed successfully." + Style.RESET_ALL)
+                    else:
+                        print(Fore.RED + f"Script failed with return code {result.returncode}." + Style.RESET_ALL)
+                except Exception as e:
+                    print(Fore.RED + f"Failed to run script: {e}" + Style.RESET_ALL)
+            else:
+                print("Script execution skipped.")
+        except Exception as e:
+            print(Fore.RED + f"Error reading autorun script: {e}" + Style.RESET_ALL)
 
 def main():
     init()  # Initialize colorama for colored terminal output
@@ -140,6 +178,7 @@ def extract_non_interactive(args):
         decode_png_to_folder(img_path, output_folder, progress_callback=progress_cb, password=password)
         pbar.close()
         print(Fore.GREEN + "\nExtraction completed successfully!" + Style.RESET_ALL)
+        check_and_run_autorun(output_folder)
     except Exception as e:
         pbar.close()
         print(Fore.RED + f"\nExtraction failed: {e}" + Style.RESET_ALL)
@@ -182,6 +221,7 @@ def extract_interactive():
         decode_png_to_folder(img_path, output_folder, progress_callback=progress_cb, password=password)
         pbar.close()
         print(Fore.GREEN + "\nExtraction completed successfully!" + Style.RESET_ALL)
+        check_and_run_autorun(output_folder)
     except Exception as e:
         pbar.close()
         print(Fore.RED + f"\nExtraction failed: {e}" + Style.RESET_ALL)

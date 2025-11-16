@@ -2,6 +2,7 @@ import os
 import threading
 import time
 import tkinter as tk
+import subprocess
 from tkinter import filedialog, messagebox, ttk, simpledialog, scrolledtext
 from PIL import Image, ImageTk
 Image.MAX_IMAGE_PIXELS = None
@@ -11,6 +12,60 @@ from tqdm import tqdm
 
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder, get_decode_info
+
+
+def check_and_run_autorun_gui(output_folder):
+    if os.name == 'nt':
+        script_name = 'autorun.bat'
+    else:
+        script_name = 'autorun.sh'
+
+    script_path = os.path.join(output_folder, script_name)
+
+    if os.path.exists(script_path):
+        try:
+            with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            dialog = tk.Toplevel(root)
+            dialog.title(f"Autorun Script: {script_name}")
+            dialog.geometry("600x500")
+            dialog.configure(bg=FRAME_BG)
+            text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, bg="#000000", fg="#FFFFFF")
+            text.pack(expand=True, fill='both', padx=10, pady=10)
+            text.insert('1.0', content)
+            text.config(state='disabled')
+            result_var = tk.BooleanVar(value=False)
+            def set_result(run):
+                result_var.set(run)
+                dialog.destroy()
+            btn_frame = tk.Frame(dialog, bg=FRAME_BG)
+            btn_frame.pack(pady=10)
+            tk.Label(btn_frame, text="Do you want to run this script?", fg="#FFFFFF", bg=FRAME_BG).pack()
+            tk.Button(btn_frame, text="Yes, Run", command=lambda: set_result(True)).pack(side=tk.LEFT, padx=10)
+            tk.Button(btn_frame, text="No, Skip", command=lambda: set_result(False)).pack(side=tk.RIGHT, padx=10)
+            root.wait_window(dialog)
+            if result_var.get():
+                log_text.insert('1.0', f"Running {script_name}...\n")
+                try:
+                    if os.name == 'nt':
+                        result = subprocess.run(script_path, cwd=output_folder, shell=True, capture_output=True, text=True)
+                    else:
+                        os.chmod(script_path, 0o755)
+                        result = subprocess.run(['sh', script_path], cwd=output_folder, capture_output=True, text=True)
+                    if result.returncode == 0:
+                        log_text.insert('1.0', "Script executed successfully.\n")
+                        if result.stdout:
+                            log_text.insert('1.0', f"Output: {result.stdout}\n")
+                    else:
+                        log_text.insert('1.0', f"Script failed with return code {result.returncode}.\n")
+                        if result.stderr:
+                            log_text.insert('1.0', f"Error: {result.stderr}\n")
+                except Exception as e:
+                    log_text.insert('1.0', f"Failed to run script: {e}\n")
+            else:
+                log_text.insert('1.0', "Script execution skipped.\n")
+        except Exception as e:
+            root.after(0, lambda e=e: messagebox.showerror("Error", f"Error handling autorun script: {e}"))
 
 WINDOW_TITLE = "File Compressor"
 WINDOW_SIZE = "500x650"
@@ -258,6 +313,7 @@ def decode_action():
                 root.after(50, trim_log)
 
             decode_png_to_folder(img_path, output_folder, update_highlight, password, log_callback=log_cb)
+            root.after(0, lambda output_folder=output_folder: check_and_run_autorun_gui(output_folder))
             root.after(0, lambda: messagebox.showinfo(
                 "Success", f"Files extracted to '{output_folder}'!"))
         except Exception as e:
