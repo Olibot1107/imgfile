@@ -5,8 +5,9 @@ if [ $# -eq 0 ]; then
     echo "No arguments provided. Please choose an option:"
     echo "1: Run CLI"
     echo "2: Run GUI"
-    echo "3: Install dependencies"
-    echo "4: Exit"
+    echo "3: Run SERVER"
+    echo "4: Install dependencies"
+    echo "5: Exit"
     read -p "Enter your choice (1-4): " choice
 else
     choice=$1
@@ -22,10 +23,14 @@ case $choice in
         python3 app.py
         ;;
     3)
+        echo "Starting SERVER..."
+        python3 server.py
+        ;;
+    4)
         echo "Installing dependencies..."
         pip install -r requirements.txt
         ;;
-    4)
+    5)
         echo "Exiting..."
         exit 0
         ;;
