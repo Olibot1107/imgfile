@@ -2,3 +2,6 @@ Pillow>=8.0.0
 tqdm
 cryptography
 colorama
+flask
+flask-cors
+werkzeug
