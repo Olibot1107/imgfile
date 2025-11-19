@@ -1,4 +1,4 @@
-# File Compressor - Version 8.3
+# File Compressor - Version 8.4
 
 A high-performance tool for compressing folders into PNG images and extracting them back. Includes CLI, GUI, and a production-ready REST API server.
 
@@ -159,6 +159,7 @@ Use the `password` parameter to encrypt compressed files with AES-256.
 ## Autorun Script
 
 If a PNG contains `autorun.bat`, `autorun.sh`, or `autorun.py`, the user will be prompted to run it upon extraction.
+this is not a thing on server api for security reasons
 
 ## License
 
