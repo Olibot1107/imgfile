@@ -1,171 +1,184 @@
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
 import os
 import io
-import base64
-import tempfile
+import time
 import shutil
+import logging
+import tempfile
 import zipfile
+import threading
+from functools import wraps
+from flask import Flask, request, jsonify, send_file
+from flask_compress import Compress
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder, get_decode_info
-import threading
-import time
-from PIL import Image
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('server.log')
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
+Compress(app)  # Enable gzip compression for responses
 
-# Configure upload folder
-UPLOAD_FOLDER = 'tmp/uploads'
-OUTPUT_FOLDER = 'tmp/outputs'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+# Load API key from environment variable
+API_KEY = os.environ.get('API_KEY', None)
 
-# Store progress data for async operations
-progress_data = {}
+if API_KEY:
+    logger.info("API authentication enabled")
+else:
+    logger.warning("No API_KEY set - server is running without authentication!")
 
-def cleanup_old_files():
-    """Clean up files older than 1 hour"""
-    for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER]:
-        for filename in os.listdir(folder):
-            filepath = os.path.join(folder, filename)
-            if os.path.isfile(filepath):
-                if time.time() - os.path.getmtime(filepath) > 3600:
-                    try:
-                        os.remove(filepath)
-                    except:
-                        pass
-            elif os.path.isdir(filepath):
-                if time.time() - os.path.getmtime(filepath) > 3600:
-                    try:
-                        shutil.rmtree(filepath)
-                    except:
-                        pass
+def require_api_key(f):
+    """Decorator to require API key authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not API_KEY:
+            # No API key configured, allow access
+            return f(*args, **kwargs)
+        
+        # Check for API key in header
+        provided_key = request.headers.get('X-API-Key')
+        
+        if not provided_key:
+            logger.warning(f"Unauthorized access attempt from {request.remote_addr}")
+            return jsonify({'error': 'API key required. Provide X-API-Key header.'}), 401
+        
+        if provided_key != API_KEY:
+            logger.warning(f"Invalid API key from {request.remote_addr}")
+            return jsonify({'error': 'Invalid API key'}), 401
+        
+        return f(*args, **kwargs)
+    
+    return decorated_function
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
+    logger.info("Health check requested")
     return jsonify({'status': 'ok', 'message': 'File Compressor API is running'})
 
+def cleanup_temp_dir_async(temp_dir):
+    """Async cleanup of temporary directory"""
+    def cleanup():
+        try:
+            time.sleep(0.5)  # Small delay to ensure file handles are released
+            shutil.rmtree(temp_dir)
+            logger.info(f"Cleaned up temp directory: {temp_dir}")
+        except Exception as e:
+            logger.error(f"Failed to clean up temp directory {temp_dir}: {e}")
+    
+    thread = threading.Thread(target=cleanup, daemon=True)
+    thread.start()
+
 @app.route('/api/compress', methods=['POST'])
+@require_api_key
 def compress_folder():
     """
-    Compress a folder to PNG
-    
-    Request body:
-    - files: Multiple file uploads
-    - folder_structure: JSON mapping of file paths (optional)
-    - compression_method: lzma, bz2, zlib, zip_lzma, zip_bz2 (default: lzma)
-    - enable_limit: boolean (default: true)
-    - password: string (optional)
+    Compress a folder to PNG synchronously
     """
+    start_time = time.time()
+    temp_dir = tempfile.mkdtemp(prefix='compress_')
+    logger.info(f"[{request.remote_addr}] Starting compression request. Temp dir: {temp_dir}")
+    
     try:
-        cleanup_old_files()
-        
         if 'files' not in request.files:
+            logger.error("No files provided in request")
+            cleanup_temp_dir_async(temp_dir)
             return jsonify({'error': 'No files provided'}), 400
         
         files = request.files.getlist('files')
-        compression_method = request.form.get('compression_method', 'lzma')
+        compression_method = request.form.get('compression_method', 'zlib')  # Changed default to zlib for speed
         enable_limit = request.form.get('enable_limit', 'true').lower() == 'true'
         password = request.form.get('password', None)
         
         if password == '':
             password = None
+            
+        logger.info(f"Processing {len(files)} files. Method: {compression_method}, Password: {'Yes' if password else 'No'}")
         
-        # Create a temporary folder to store uploaded files
-        temp_folder = os.path.join(UPLOAD_FOLDER, f'compress_{int(time.time())}')
-        os.makedirs(temp_folder, exist_ok=True)
+        # Create input directory for files
+        input_dir = os.path.join(temp_dir, 'input')
+        os.makedirs(input_dir, exist_ok=True)
         
-        # Save uploaded files
+        # Save uploaded files with streaming
         for file in files:
             if file.filename:
-                # Handle folder structure if provided
                 filepath = secure_filename(file.filename)
-                # Replace forward slashes with os separator
                 filepath = filepath.replace('/', os.sep)
-                full_path = os.path.join(temp_folder, filepath)
-                
-                # Create subdirectories if needed
+                full_path = os.path.join(input_dir, filepath)
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)
                 file.save(full_path)
+                logger.debug(f"Saved file: {filepath}")
         
-        # Generate output PNG path
+        # Output file path
         output_filename = f'compressed_{int(time.time())}.png'
-        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        output_path = os.path.join(temp_dir, output_filename)
         
-        # Progress tracking
-        job_id = str(int(time.time() * 1000))
-        progress_data[job_id] = {'progress': 0, 'message': 'Starting compression', 'status': 'running'}
-        
-        def progress_callback(percent, message=''):
-            progress_data[job_id] = {
-                'progress': percent,
-                'message': message,
-                'status': 'running'
-            }
-        
+        # Define callbacks for logging
         def log_callback(msg):
-            if job_id in progress_data:
-                progress_data[job_id]['last_log'] = msg
+            logger.info(f"[Encoder] {msg}")
+            
+        def progress_callback(percent, message=''):
+            logger.info(f"[Encoder Progress] {percent:.1f}% - {message}")
+
+        # Run compression
+        logger.info("Starting encoding process...")
+        encode_folder_to_png(
+            input_dir,
+            output_path,
+            compression_method,
+            progress_callback,
+            enable_limit,
+            password,
+            log_callback
+        )
+        logger.info("Encoding complete.")
         
-        # Encode in background thread
-        def encode_task():
-            try:
-                encode_folder_to_png(
-                    temp_folder,
-                    output_path,
-                    compression_method,
-                    progress_callback,
-                    enable_limit,
-                    password,
-                    log_callback
-                )
-                progress_data[job_id] = {
-                    'progress': 100,
-                    'message': 'Compression complete',
-                    'status': 'complete',
-                    'output_file': output_filename
-                }
-            except Exception as e:
-                progress_data[job_id] = {
-                    'progress': 0,
-                    'message': str(e),
-                    'status': 'error'
-                }
-            finally:
-                # Cleanup temp folder
-                try:
-                    shutil.rmtree(temp_folder)
-                except:
-                    pass
+        # Stream the file back
+        duration = time.time() - start_time
+        logger.info(f"Request completed in {duration:.2f}s")
         
-        thread = threading.Thread(target=encode_task, daemon=True)
-        thread.start()
+        # Use send_file with path for better streaming
+        response = send_file(
+            output_path,
+            mimetype='image/png',
+            as_attachment=True,
+            download_name=output_filename
+        )
         
-        return jsonify({
-            'job_id': job_id,
-            'message': 'Compression started',
-            'status': 'running'
-        })
+        # Schedule async cleanup after response is sent
+        cleanup_temp_dir_async(temp_dir)
         
+        return response
+
     except Exception as e:
+        logger.error(f"Error during compression: {e}", exc_info=True)
+        cleanup_temp_dir_async(temp_dir)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/extract', methods=['POST'])
+@require_api_key
 def extract_png():
     """
-    Extract PNG to folder
-    
-    Request body:
-    - file: PNG file upload
-    - password: string (optional)
+    Extract PNG to folder synchronously
     """
+    start_time = time.time()
+    temp_dir = tempfile.mkdtemp(prefix='extract_')
+    logger.info(f"[{request.remote_addr}] Starting extraction request. Temp dir: {temp_dir}")
+    
     try:
-        cleanup_old_files()
-        
         if 'file' not in request.files:
+            logger.error("No file provided")
+            cleanup_temp_dir_async(temp_dir)
             return jsonify({'error': 'No file provided'}), 400
         
         file = request.files['file']
@@ -173,112 +186,93 @@ def extract_png():
         
         if password == '':
             password = None
+            
+        # Save input PNG
+        input_png = os.path.join(temp_dir, 'input.png')
+        file.save(input_png)
+        logger.info(f"Saved input PNG. Size: {os.path.getsize(input_png)} bytes")
         
-        # Save uploaded PNG
-        temp_png = os.path.join(UPLOAD_FOLDER, f'extract_{int(time.time())}.png')
-        file.save(temp_png)
+        # Output directory
+        output_dir = os.path.join(temp_dir, 'output')
+        os.makedirs(output_dir, exist_ok=True)
         
-        # Create output folder
-        output_folder = os.path.join(OUTPUT_FOLDER, f'extracted_{int(time.time())}')
-        os.makedirs(output_folder, exist_ok=True)
-        
-        # Progress tracking
-        job_id = str(int(time.time() * 1000))
-        progress_data[job_id] = {'progress': 0, 'message': 'Starting extraction', 'status': 'running'}
-        
-        def progress_callback(percent, message='', file='', start_offset=0, end_offset=0):
-            progress_data[job_id] = {
-                'progress': percent,
-                'message': message,
-                'status': 'running',
-                'current_file': file
-            }
-        
+        # Callbacks
         def log_callback(msg):
-            if job_id in progress_data:
-                progress_data[job_id]['last_log'] = msg
+            logger.info(f"[Decoder] {msg}")
+            
+        def progress_callback(percent, message='', file='', start_offset=0, end_offset=0):
+            logger.info(f"[Decoder Progress] {percent:.1f}% - {message}")
+
+        # Run decoding
+        logger.info("Starting decoding process...")
+        decode_png_to_folder(
+            input_png,
+            output_dir,
+            progress_callback,
+            password,
+            log_callback
+        )
+        logger.info("Decoding complete.")
         
-        # Decode in background thread
-        def decode_task():
-            try:
-                decode_png_to_folder(
-                    temp_png,
-                    output_folder,
-                    progress_callback,
-                    password,
-                    log_callback
-                )
-                
-                # Create a zip of extracted files for download
-                zip_filename = f'extracted_{int(time.time())}.zip'
-                zip_path = os.path.join(OUTPUT_FOLDER, zip_filename)
-                
-                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    for root, dirs, files in os.walk(output_folder):
-                        for f in files:
-                            file_path = os.path.join(root, f)
-                            arcname = os.path.relpath(file_path, output_folder)
-                            zipf.write(file_path, arcname)
-                
-                progress_data[job_id] = {
-                    'progress': 100,
-                    'message': 'Extraction complete',
-                    'status': 'complete',
-                    'output_file': zip_filename
-                }
-            except Exception as e:
-                progress_data[job_id] = {
-                    'progress': 0,
-                    'message': str(e),
-                    'status': 'error'
-                }
-            finally:
-                # Cleanup temp files
-                try:
-                    os.remove(temp_png)
-                    shutil.rmtree(output_folder)
-                except:
-                    pass
+        # Zip the output with optimized settings
+        zip_filename = f'extracted_{int(time.time())}.zip'
+        zip_path = os.path.join(temp_dir, zip_filename)
         
-        thread = threading.Thread(target=decode_task, daemon=True)
-        thread.start()
+        logger.info("Creating ZIP file...")
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
+            for root, dirs, files in os.walk(output_dir):
+                for f in files:
+                    file_path = os.path.join(root, f)
+                    arcname = os.path.relpath(file_path, output_dir)
+                    zipf.write(file_path, arcname)
         
-        return jsonify({
-            'job_id': job_id,
-            'message': 'Extraction started',
-            'status': 'running'
-        })
+        duration = time.time() - start_time
+        logger.info(f"Request completed in {duration:.2f}s")
         
+        # Stream back
+        response = send_file(
+            zip_path,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=zip_filename
+        )
+        
+        # Schedule async cleanup
+        cleanup_temp_dir_async(temp_dir)
+        
+        return response
+
     except Exception as e:
+        logger.error(f"Error during extraction: {e}", exc_info=True)
+        cleanup_temp_dir_async(temp_dir)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/info', methods=['POST'])
+@require_api_key
 def get_info():
     """
-    Get information about a PNG file without extracting
-    
-    Request body:
-    - file: PNG file upload
+    Get information about a PNG file
     """
+    temp_dir = tempfile.mkdtemp(prefix='info_')
+    logger.info(f"[{request.remote_addr}] Info request. Temp dir: {temp_dir}")
+    
     try:
         if 'file' not in request.files:
+            cleanup_temp_dir_async(temp_dir)
             return jsonify({'error': 'No file provided'}), 400
         
         file = request.files['file']
-        
-        # Save uploaded PNG temporarily
-        temp_png = os.path.join(UPLOAD_FOLDER, f'info_{int(time.time())}.png')
+        temp_png = os.path.join(temp_dir, 'temp.png')
         file.save(temp_png)
         
-        # Get info
+        from PIL import Image
+        
         folder_name, file_count, total_size, compression_method, password_info, metadata_channels = get_decode_info(temp_png)
         
-        # Get image dimensions
         img = Image.open(temp_png)
         width, height = img.size
         
-        # Cleanup
-        os.remove(temp_png)
+        cleanup_temp_dir_async(temp_dir)
         
         return jsonify({
             'folder_name': folder_name,
@@ -293,69 +287,17 @@ def get_info():
         })
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/progress/<job_id>', methods=['GET'])
-def get_progress(job_id):
-    """Get progress of a compression or extraction job"""
-    if job_id not in progress_data:
-        return jsonify({'error': 'Job not found'}), 404
-    
-    return jsonify(progress_data[job_id])
-
-@app.route('/api/download/<filename>', methods=['GET'])
-def download_file(filename):
-    """Download a generated file"""
-    try:
-        filepath = os.path.join(OUTPUT_FOLDER, secure_filename(filename))
-        
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'File not found'}), 404
-        
-        return send_file(
-            filepath,
-            as_attachment=True,
-            download_name=filename
-        )
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/preview/<filename>', methods=['GET'])
-def preview_image(filename):
-    """Get a preview/thumbnail of a PNG file"""
-    try:
-        filepath = os.path.join(OUTPUT_FOLDER, secure_filename(filename))
-        
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'File not found'}), 404
-        
-        # Create thumbnail
-        img = Image.open(filepath)
-        img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-        
-        # Convert to base64
-        buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
-        buffer.seek(0)
-        img_base64 = base64.b64encode(buffer.read()).decode()
-        
-        return jsonify({
-            'image': f'data:image/png;base64,{img_base64}',
-            'width': img.width,
-            'height': img.height
-        })
-        
-    except Exception as e:
+        logger.error(f"Error getting info: {e}", exc_info=True)
+        cleanup_temp_dir_async(temp_dir)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/methods', methods=['GET'])
 def get_compression_methods():
     """Get available compression methods"""
     methods = [
+        {'value': 'zlib', 'name': 'ZLIB (Fast compression)', 'recommended': True},
         {'value': 'lzma', 'name': 'LZMA (Best compression)'},
         {'value': 'bz2', 'name': 'BZIP2 (Good compression)'},
-        {'value': 'zlib', 'name': 'ZLIB (Fast compression)'},
         {'value': 'zip_lzma', 'name': 'ZIP-LZMA (Compatible)'},
         {'value': 'zip_bz2', 'name': 'ZIP-BZIP2 (Compatible)'}
     ]
@@ -364,67 +306,52 @@ def get_compression_methods():
 @app.route('/', methods=['GET'])
 def index():
     """API documentation"""
-    docs = """
+    auth_status = "ENABLED" if API_KEY else "DISABLED"
+    auth_note = "<p><strong>Authentication:</strong> API key required via X-API-Key header</p>" if API_KEY else "<p><strong>Warning:</strong> No authentication configured</p>"
+    
+    return f"""
     <html>
     <head><title>File Compressor API</title></head>
     <body style="font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px;">
-        <h1>File Compressor API v8.0</h1>
-        <p>Web API for compressing folders to PNG and extracting them back.</p>
+        <h1>File Compressor API (Stateless & Optimized)</h1>
+        <p>High-performance synchronous Web API for compressing folders to PNG and extracting them back.</p>
+        
+        <p><strong>Authentication Status:</strong> {auth_status}</p>
+        {auth_note}
         
         <h2>Endpoints</h2>
         
-        <h3>GET /health</h3>
-        <p>Health check endpoint</p>
-        
         <h3>POST /api/compress</h3>
-        <p>Compress files to PNG</p>
-        <p><strong>Form Data:</strong></p>
-        <ul>
-            <li><code>files</code>: Multiple file uploads (required)</li>
-            <li><code>compression_method</code>: lzma|bz2|zlib|zip_lzma|zip_bz2 (default: lzma)</li>
-            <li><code>enable_limit</code>: true|false (default: true)</li>
-            <li><code>password</code>: Optional password for encryption</li>
-        </ul>
-        <p><strong>Returns:</strong> JSON with job_id for progress tracking</p>
+        <p>Compress files to PNG. Returns the PNG file directly.</p>
+        <p><em>Headers:</em> X-API-Key (if authentication enabled)</p>
         
         <h3>POST /api/extract</h3>
-        <p>Extract PNG to files</p>
-        <p><strong>Form Data:</strong></p>
-        <ul>
-            <li><code>file</code>: PNG file upload (required)</li>
-            <li><code>password</code>: Optional password for decryption</li>
-        </ul>
-        <p><strong>Returns:</strong> JSON with job_id for progress tracking</p>
+        <p>Extract PNG to files. Returns a ZIP file directly.</p>
+        <p><em>Headers:</em> X-API-Key (if authentication enabled)</p>
         
         <h3>POST /api/info</h3>
-        <p>Get information about a PNG file</p>
-        <p><strong>Form Data:</strong></p>
-        <ul>
-            <li><code>file</code>: PNG file upload (required)</li>
-        </ul>
-        <p><strong>Returns:</strong> JSON with file information</p>
-        
-        <h3>GET /api/progress/{job_id}</h3>
-        <p>Get progress of compression/extraction job</p>
-        <p><strong>Returns:</strong> JSON with progress percentage and status</p>
-        
-        <h3>GET /api/download/{filename}</h3>
-        <p>Download a generated file</p>
-        
-        <h3>GET /api/preview/{filename}</h3>
-        <p>Get base64 preview of PNG file</p>
+        <p>Get information about a PNG file.</p>
+        <p><em>Headers:</em> X-API-Key (if authentication enabled)</p>
         
         <h3>GET /api/methods</h3>
-        <p>Get available compression methods</p>
+        <p>Get available compression methods.</p>
         
-        <hr>
-        <p><em>Made by Olibot13 and ChatGPT</em></p>
+        <h2>Performance Features</h2>
+        <ul>
+            <li>Gzip compression for API responses</li>
+            <li>Async cleanup of temporary files</li>
+            <li>Optimized default compression (zlib)</li>
+            <li>Streaming file transfers</li>
+        </ul>
     </body>
     </html>
     """
-    return docs
 
 if __name__ == '__main__':
     print("Starting File Compressor API on http://0.0.0.0:4362")
-    print("API Documentation: http://localhost:4362/")
+    if API_KEY:
+        print("✓ API authentication enabled")
+    else:
+        print("⚠ WARNING: No API_KEY environment variable set - server is UNPROTECTED!")
+        print("  Set API_KEY environment variable to enable authentication")
     app.run(host='0.0.0.0', port=4362, debug=False, threaded=True)

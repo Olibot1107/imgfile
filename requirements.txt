@@ -4,4 +4,5 @@ cryptography
 colorama
 flask
 flask-cors
+flask-compress
 werkzeug

@@ -1,1 +1,11 @@
 __pycache__/
+*.pyc
+*.pyo
+*.log
+test.txt
+test_server.py
+compressed.png
+extracted.zip
+tmp/
+output/
+.env
