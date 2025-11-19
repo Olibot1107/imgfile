@@ -1,4 +1,4 @@
-# Version 8.0
+# Version 8.2
 
 ## how to use
 First, install dependencies:
@@ -6,7 +6,7 @@ First, install dependencies:
 1. Download and install Python 3.10 from https://www.python.org/downloads/windows/
 2. Run
 ```
-start.bat 3
+start.bat 4
 ```
 
 ### Linux
@@ -17,7 +17,7 @@ sudo apt install python3-pip
 2. Run
 ```
 chmod +x start.sh
-./start.sh 3
+./start.sh 4
 ```
 
 ## Start CLI
@@ -42,10 +42,25 @@ start.bat 1
 start.bat 2
 ```
 ### Linux
-2. Run
+1. Run
 ```
 ./start.sh 2
 ```
+
+## Start server
+
+### Windows
+1. Run
+```
+./start.bat 3
+```
+
+### Linux
+1. Run 
+```
+./start.sh 3
+```
+
 
 ## Autorun Script
 if the png contains a file called `autorun.bat` or `autorun.sh` or `autorun.py`, it will be shown to the user and they can choose to run it or skip it.

@@ -6,8 +6,9 @@ IF "%~1"=="" (
     echo No arguments provided. Please choose an option:
     echo 1: Run CLI
     echo 2: Run GUI
-    echo 3: Install dependencies
-    echo 4: Exit
+    echo 3: Run SERVER
+    echo 4: Install dependencies
+    echo 5: Exit
     set /p choice="Enter your choice (1-4): "
 ) ELSE (
     set choice=%~1
@@ -27,12 +28,17 @@ IF "%choice%"=="2" (
 )
 
 IF "%choice%"=="3" (
+    echo Starting SERVER...
+    python server.py
+    goto :eof
+)
+IF "%choice%"=="4" (
     echo Installing dependencies...
     pip install -r requirements.txt
     goto :eof
 )
 
-IF "%choice%"=="4" (
+IF "%choice%"=="5" (
     echo Exiting...
     exit /b 0
 )
