@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Compressor – PNG steganography</title>
+<style>
+    /* ---------- BASIC STYLES ---------- */
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;background:#1a1a1a;color:#e0e0e0;min-height:100vh;padding:20px}
+    .container{max-width:900px;margin:auto;background:#2d2d2d;border-radius:8px;padding:30px;box-shadow:0 4px 6px rgba(0,0,0,.3)}
+    h1{color:#00ff6e;font-size:28px;margin-bottom:25px}
+    .tabs{display:flex;gap:10px;margin-bottom:25px;border-bottom:2px solid #3d3d3d}
+    .tab{padding:12px 24px;background:none;border:none;color:#888;cursor:pointer;font-size:15px;border-bottom:3px solid transparent;transition:.2s}
+    .tab:hover{color:#bbb}
+    .tab.active{color:#00ff6e;border-bottom-color:#00ff6e}
+    .tab-content{display:none}
+    .tab-content.active{display:block}
+    .upload-zone{border:2px dashed #555;border-radius:6px;padding:40px;text-align:center;cursor:pointer;background:#252525;margin-bottom:20px;transition:.3s}
+    .upload-zone:hover{border-color:#00ff6e;background:#2a2a2a}
+    .upload-zone.dragover{border-color:#00ff6e;background:#2f3f2f}
+    .upload-zone p{margin:8px 0}
+    .upload-zone .main-text{font-size:16px;color:#ccc}
+    .upload-zone .sub-text{font-size:13px;color:#777}
+    input[type=file]{display:none}
+    .settings{background:#252525;padding:20px;border-radius:6px;margin-bottom:20px}
+    .setting-row{margin-bottom:15px}
+    .setting-row:last-child{margin-bottom:0}
+    label{display:block;margin-bottom:6px;color:#bbb;font-size:14px}
+    select, input[type=password], input[type=text]{width:100%;padding:10px;background:#1a1a1a;border:1px solid #3d3d3d;border-radius:4px;color:#e0e0e0;font-size:14px}
+    select:focus, input:focus{outline:none;border-color:#00ff6e}
+    .checkbox-row{display:flex;align-items:center;gap:8px}
+    input[type=checkbox]{width:18px;height:18px;cursor:pointer}
+    .checkbox-row label{margin:0;cursor:pointer}
+    .btn{width:100%;padding:14px;background:#00ff6e;color:#1a1a1a;border:none;border-radius:4px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s}
+    .btn:hover{background:#00e062}
+    .btn:disabled{background:#3d3d3d;color:#666;cursor:not-allowed}
+    .progress-section{display:none;margin-top:20px;padding:20px;background:#252525;border-radius:6px}
+    .progress-section.active{display:block}
+    .progress-bar-container{width:100%;height:8px;background:#1a1a1a;border-radius:4px;overflow:hidden;margin-bottom:12px}
+    .progress-bar-fill{height:100%;background:#00ff6e;width:0%;transition:width .3s ease}
+    .progress-info{display:flex;justify-content:space-between;font-size:13px;color:#aaa;margin-bottom:15px}
+    .image-preview{margin-top:20px;text-align:center}
+    .image-preview canvas{max-width:100%;border:1px solid #3d3d3d;border-radius:4px;background:#1a1a1a}
+    .file-list{max-height:180px;overflow-y:auto;background:#1a1a1a;padding:12px;border-radius:4px;margin-top:15px;font-size:13px}
+    .file-item{padding:6px 0;border-bottom:1px solid #2d2d2d;color:#aaa}
+    .file-item:last-child{border-bottom:none}
+    .info-panel{background:#1f2f1f;padding:15px;border-radius:4px;margin-bottom:20px;border-left:3px solid #00ff6e;display:none}
+    .info-panel.show{display:block}
+    .info-panel h3{color:#00ff6e;font-size:15px;margin-bottom:10px}
+    .info-panel p{margin:5px 0;font-size:13px;color:#bbb}
+    .download-btn{margin-top:15px;background:#0088ff}
+    .download-btn:hover{background:#006dd9}
+    .footer{text-align:center;margin-top:30px;color:#555;font-size:12px}
+    ::-webkit-scrollbar{width:8px}
+    ::-webkit-scrollbar-track{background:#1a1a1a}
+    ::-webkit-scrollbar-thumb{background:#3d3d3d;border-radius:4px}
+    ::-webkit-scrollbar-thumb:hover{background:#555}
+
+    /* ---------- VISUAL EFFECTS ---------- */
+    .canvas-wrapper{position:relative;display:inline-block;margin:0 auto;}
+    .stats-overlay{
+        position:absolute;bottom:10px;left:10px;right:10px;
+        background:rgba(0,0,0,0.85);padding:10px;border-radius:4px;
+        font-size:12px;color:#00ff6e;font-family:monospace;
+        display:none;
+    }
+    .stats-overlay.show{display:block;}
+    .stats-row{display:flex;justify-content:space-between;margin:3px 0;}
+    .highlight-pixel{
+        position:absolute;border:2px solid #00ff6e;box-shadow:0 0 10px #00ff6e;
+        pointer-events:none;animation:pulse 0.5s ease-in-out;
+    }
+    @keyframes pulse{
+        0%,100%{transform:scale(1);opacity:0.8;}
+        50%{transform:scale(1.2);opacity:1;}
+    }
+
+    /* ---------- MODAL ---------- */
+    .modal-backdrop{
+        position:fixed;top:0;left:0;width:100vw;height:100vh;
+        background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;
+        z-index:1000;visibility:hidden;opacity:0;transition:opacity .2s,visibility .2s;
+    }
+    .modal-backdrop.show{visibility:visible;opacity:1;}
+    .modal{
+        background:#2d2d2d;padding:20px;border-radius:8px;max-width:500px;width:90%;
+        box-shadow:0 4px 8px rgba(0,0,0,.5);
+    }
+    .modal h2{color:#00ff6e;margin-bottom:15px;font-size:22px;}
+    .modal ul{list-style:none;padding-left:0;margin-bottom:20px;max-height:200px;overflow-y:auto;}
+    .modal ul li{color:#ccc;padding:4px 0;border-bottom:1px solid #3d3d3d;}
+    .modal .modal-actions{display:flex;justify-content:flex-end;gap:10px;}
+    .modal .modal-actions button{
+        padding:8px 16px;border:none;border-radius:4px;font-weight:600;cursor:pointer;
+    }
+    .modal .modal-actions .confirm{background:#00ff6e;color:#1a1a1a;}
+    .modal .modal-actions .cancel{background:#555;color:#e0e0e0;}
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>File Compressor</h1>
+
+    <!-- ---------- TABS ---------- -->
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('compress')">Compress to PNG</button>
+        <button class="tab" onclick="switchTab('extract')">Extract from PNG</button>
+    </div>
+
+    <!-- ---------- COMPRESS TAB ---------- -->
+    <div id="compress-tab" class="tab-content active">
+        <div class="upload-zone" id="compress-drop" onclick="document.getElementById('file-input').click()">
+            <p class="main-text">Click to select files or drag them here</p>
+            <p class="sub-text">Multiple files will be combined into a single PNG</p>
+        </div>
+        <input type="file" id="file-input" multiple>
+
+        <div class="file-list" id="selected-files" style="display:none"></div>
+
+        <div class="settings">
+            <div class="setting-row">
+                <label id="compress-method-label">Compression Method</label>
+                <select id="compress-method"></select>
+            </div>
+
+            <div class="setting-row">
+                <label>Output filename</label>
+                <input type="text" id="output-name" placeholder="compressed.png">
+            </div>
+
+            <div class="setting-row">
+                <label>Password (optional – AES‑GCM)</label>
+                <input type="password" id="compress-pass" placeholder="Leave empty for no password">
+            </div>
+
+            <div class="setting-row checkbox-row">
+                <input type="checkbox" id="size-limit" checked>
+                <label for="size-limit">Enable 50 MB size limit</label>
+            </div>
+
+            <div class="setting-row checkbox-row" id="fast-mode-row" style="display:none">
+                <input type="checkbox" id="fast-mode" checked disabled>
+                <label for="fast-mode">Fast mode (auto‑selected on mobile)</label>
+            </div>
+        </div>
+
+        <button class="btn" id="compress-start" onclick="startCompress()" disabled>Start Compression</button>
+
+        <div class="progress-section" id="compress-progress">
+            <div class="progress-info">
+                <span id="compress-status">Processing…</span>
+                <span id="compress-percent">0 %</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="compress-bar"></div>
+            </div>
+            <div class="image-preview">
+                <div class="canvas-wrapper">
+                    <canvas id="preview-canvas"></canvas>
+                    <div class="stats-overlay" id="stats-overlay">
+                        <div class="stats-row"><span>Pixels Encoded:</span><span id="stat-pixels">0</span></div>
+                        <div class="stats-row"><span>Bytes Written:</span><span id="stat-bytes">0</span></div>
+                        <div class="stats-row"><span>Progress:</span><span id="stat-progress">0%</span></div>
+                        <div class="stats-row"><span>Speed:</span><span id="stat-speed">0 px/s</span></div>
+                    </div>
+                </div>
+            </div>
+            <button class="btn download-btn" id="download-btn" onclick="downloadImage()" style="display:none">Download PNG</button>
+        </div>
+    </div>
+
+    <!-- ---------- EXTRACT TAB ---------- -->
+    <div id="extract-tab" class="tab-content">
+        <div class="upload-zone" id="extract-drop" onclick="document.getElementById('png-input').click()">
+            <p class="main-text">Click to select PNG file or drag it here</p>
+            <p class="sub-text">Select a compressed PNG to extract its contents</p>
+        </div>
+        <input type="file" id="png-input" accept=".png">
+
+        <div class="info-panel" id="png-info">
+            <h3>PNG Information</h3>
+            <div id="png-details"></div>
+        </div>
+
+        <div class="settings">
+            <div class="setting-row">
+                <label>Password (if protected)</label>
+                <input type="password" id="extract-pass" placeholder="Leave empty if no password">
+            </div>
+        </div>
+
+        <button class="btn" id="extract-start" onclick="startExtract()" disabled>Extract Files</button>
+
+        <div class="progress-section" id="extract-progress">
+            <div class="progress-info">
+                <span id="extract-status">Processing…</span>
+                <span id="extract-percent">0 %</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="extract-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">Made by Olibot13 and ChatGPT | Enhanced with Visual Effects</div>
+</div>
+
+<!-- ---------- MODAL FOR PREVIEW ---------- -->
+<div class="modal-backdrop" id="preview-modal">
+    <div class="modal">
+        <h2>Files to be extracted</h2>
+        <ul id="preview-list"></ul>
+        <div class="modal-actions">
+            <button class="cancel" onclick="closePreview()">Cancel</button>
+            <button class="confirm" onclick="confirmExtraction()">Extract</button>
+        </div>
+    </div>
+</div>
+
+<!-- ---------- DEPENDENCIES ---------- -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+/* -------------------------------------------------
+   GLOBAL STATE
+--------------------------------------------------- */
+let selectedFiles   = [];
+let selectedPNG     = null;
+let generatedBlob   = null;
+let isMobile        = false;
+let pendingZip      = null;
+let pendingPayload  = null;
+let animationFrame  = null;
+let isProcessing    = false;
+
+/* -------------------------------------------------
+   DEVICE DETECTION
+--------------------------------------------------- */
+function detectDevice(){
+    const hasTouch = ('maxTouchPoints' in navigator && navigator.maxTouchPoints > 0) ||
+                     ('ontouchstart' in window);
+    const smallScreen = window.innerWidth < 900;
+    isMobile = hasTouch && smallScreen;
+}
+detectDevice();
+
+/* -------------------------------------------------
+   UI INITIALISATION
+--------------------------------------------------- */
+function populateMethods(){
+    const select = document.getElementById('compress-method');
+    select.innerHTML = '';
+
+    const fast = document.createElement('option');
+    fast.value = 'deflate-fast';
+    fast.textContent = 'DEFLATE – fast (low‑level)';
+    select.appendChild(fast);
+
+    if(!isMobile){
+        const best = document.createElement('option');
+        best.value = 'deflate-best';
+        best.textContent = 'DEFLATE – best (level 9)';
+        select.appendChild(best);
+
+        const store = document.createElement('option');
+        store.value = 'store';
+        store.textContent = 'STORE – no compression (fastest, larger output)';
+        select.appendChild(store);
+    }
+    select.selectedIndex = 0;
+}
+populateMethods();
+
+if(isMobile){
+    document.getElementById('fast-mode-row').style.display = 'flex';
+}
+
+/* -------------------------------------------------
+   TAB SWITCHING
+--------------------------------------------------- */
+function switchTab(tab){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+
+    if(tab==='compress'){
+        document.querySelector('.tab:first-child').classList.add('active');
+        document.getElementById('compress-tab').classList.add('active');
+    }else{
+        document.querySelector('.tab:last-child').classList.add('active');
+        document.getElementById('extract-tab').classList.add('active');
+    }
+}
+
+/* -------------------------------------------------
+   DRAG‑AND‑DROP HANDLERS
+--------------------------------------------------- */
+const compressDrop = document.getElementById('compress-drop');
+compressDrop.addEventListener('dragover',e=>{e.preventDefault();compressDrop.classList.add('dragover');});
+compressDrop.addEventListener('dragleave',()=>compressDrop.classList.remove('dragover'));
+compressDrop.addEventListener('drop',e=>{
+    e.preventDefault();compressDrop.classList.remove('dragover');
+    handleFiles(Array.from(e.dataTransfer.files));
+});
+
+const extractDrop = document.getElementById('extract-drop');
+extractDrop.addEventListener('dragover',e=>{e.preventDefault();extractDrop.classList.add('dragover');});
+extractDrop.addEventListener('dragleave',()=>extractDrop.classList.remove('dragover'));
+extractDrop.addEventListener('drop',e=>{
+    e.preventDefault();extractDrop.classList.remove('dragover');
+    if(e.dataTransfer.files.length) handlePNG(e.dataTransfer.files[0]);
+});
+
+/* -------------------------------------------------
+   INPUT CHANGE LISTENERS
+--------------------------------------------------- */
+document.getElementById('file-input').addEventListener('change',e=>handleFiles(Array.from(e.target.files)));
+document.getElementById('png-input').addEventListener('change',e=>{
+    if(e.target.files.length) handlePNG(e.target.files[0]);
+});
+
+/* -------------------------------------------------
+   FILE SELECTION (compress)
+--------------------------------------------------- */
+function handleFiles(files){
+    selectedFiles = files;
+    const list = document.getElementById('selected-files');
+    list.innerHTML = files.map(f=>`<div class="file-item">${f.name} – ${formatBytes(f.size)}</div>`).join('');
+    list.style.display = 'block';
+    document.getElementById('compress-start').disabled = false;
+
+    if(!document.getElementById('output-name').value){
+        document.getElementById('output-name').value = 'compressed.png';
+    }
+}
+
+/* -------------------------------------------------
+   PNG SELECTION (extract)
+--------------------------------------------------- */
+function handlePNG(file){
+    if(!file.name.toLowerCase().endsWith('.png')){
+        alert('Please select a PNG file');
+        return;
+    }
+    selectedPNG = file;
+    document.getElementById('extract-start').disabled = false;
+
+    const info = document.getElementById('png-info');
+    const details = document.getElementById('png-details');
+    details.innerHTML = `
+        <p>File: ${file.name}</p>
+        <p>Size: ${formatBytes(file.size)}</p>
+    `;
+    info.classList.add('show');
+}
+
+/* -------------------------------------------------
+   COMPRESSION LOGIC WITH VISUAL ANIMATION
+--------------------------------------------------- */
+async function startCompress(){
+    if(selectedFiles.length===0 || isProcessing) return;
+    isProcessing = true;
+
+    const password    = document.getElementById('compress-pass').value.trim();
+    const outputName  = document.getElementById('output-name').value || 'compressed.png';
+    const method      = document.getElementById('compress-method').value;
+
+    document.getElementById('compress-start').disabled = true;
+    const progSec = document.getElementById('compress-progress');
+    progSec.classList.add('active');
+    updateProgress('compress',0,'Creating ZIP');
+
+    let zipOptions = {type:'uint8array'};
+    if(method === 'deflate-best'){
+        zipOptions.compression = 'DEFLATE';
+        zipOptions.compressionOptions = {level:9};
+    }else if(method === 'deflate-fast'){
+        zipOptions.compression = 'DEFLATE';
+        zipOptions.compressionOptions = {level:isMobile?3:6};
+    }else if(method === 'store'){
+        zipOptions.compression = 'STORE';
+    }
+
+    try{
+        const zip = new JSZip();
+        for(const f of selectedFiles){
+            const data = await f.arrayBuffer();
+            zip.file(f.name, data);
+        }
+        const zipUint8 = await zip.generateAsync(zipOptions);
+        updateProgress('compress',30,'ZIP created');
+
+        let payload = zipUint8;
+        let encryptedFlag = 0;
+        if(password){
+            if(isMobile){
+                alert('Encryption is disabled on mobile devices to avoid crashes.');
+            }else{
+                encryptedFlag = 1;
+                payload = await encryptData(payload,password);
+                updateProgress('compress',45,'Encrypted');
+            }
+        }
+        updateProgress('compress',55,'Payload ready');
+
+        const lengthBytes = new Uint8Array(4);
+        const view = new DataView(lengthBytes.buffer);
+        view.setUint32(0,payload.length);
+        const header = new Uint8Array(1+4);
+        header[0] = encryptedFlag;
+        header.set(lengthBytes,1);
+        const fullData = new Uint8Array(header.length + payload.length);
+        fullData.set(header,0);
+        fullData.set(payload,header.length);
+        updateProgress('compress',70,'Data packed');
+
+        const pixelsNeeded = Math.ceil(fullData.length / 3);
+        const maxDimMobile = 1024;
+        let dimension = Math.ceil(Math.sqrt(pixelsNeeded));
+        if(isMobile && dimension > maxDimMobile) dimension = maxDimMobile;
+
+        const canvas = document.getElementById('preview-canvas');
+        canvas.width = dimension;
+        canvas.height = dimension;
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.createImageData(dimension,dimension);
+        const dst = imgData.data;
+
+        for(let i=0;i<dst.length;i+=4){
+            dst[i]=255;dst[i+1]=255;dst[i+2]=255;dst[i+3]=255;
+        }
+
+        document.getElementById('stats-overlay').classList.add('show');
+
+        await encodeWithAnimation(fullData, dst, dimension, ctx, imgData);
+
+        updateProgress('compress',90,'Canvas ready');
+
+        generatedBlob = await new Promise(res=>canvas.toBlob(res,'image/png'));
+        updateProgress('compress',100,'Done');
+        document.getElementById('download-btn').style.display='block';
+        
+        setTimeout(()=>document.getElementById('stats-overlay').classList.remove('show'),2000);
+    }catch(err){
+        alert('Compression failed: '+err.message);
+        progSec.classList.remove('active');
+        document.getElementById('compress-start').disabled = false;
+        document.getElementById('stats-overlay').classList.remove('show');
+    }finally{
+        isProcessing = false;
+    }
+}
+
+/* -------------------------------------------------
+   ANIMATED ENCODING FUNCTION
+--------------------------------------------------- */
+async function encodeWithAnimation(fullData, dst, dimension, ctx, imgData){
+    const totalPixels = Math.ceil(fullData.length / 3);
+    const totalBytes = fullData.length;
+    const startTime = Date.now();
+
+    // target total duration (40s for large data)
+    const targetDuration = 40000;
+    const baseBatch = isMobile ? 800 : 500;
+    const minBatch = 200;
+    const maxBatch = 20000;
+
+    // dynamic speed control based on total size
+    // for small data, finish quickly; for large, pace to 40s
+    const totalEstimate = totalBytes / 50000; // rough speed estimate baseline
+    const duration = Math.min(Math.max(totalEstimate * 1000, 4000), targetDuration);
+    const adjustFactor = totalBytes / (duration / 16); // ~16ms per frame target
+
+    return new Promise(resolve => {
+        let byteIndex = 0;
+
+        function processChunk(){
+            const remaining = totalBytes - byteIndex;
+            let dynamicBatch = Math.min(Math.max(Math.round(adjustFactor / 3), minBatch), maxBatch);
+            dynamicBatch = Math.min(dynamicBatch, Math.ceil(remaining / 3));
+
+            const chunkEnd = Math.min(byteIndex + dynamicBatch * 3, totalBytes);
+
+            for(let i = byteIndex; i < chunkEnd; i++){
+                const pixelIdx = Math.floor(i / 3);
+                const channel = i % 3;
+                dst[pixelIdx * 4 + channel] = fullData[i];
+            }
+
+            byteIndex = chunkEnd;
+            const pixelsProcessed = Math.floor(byteIndex / 3);
+            const progress = pixelsProcessed / totalPixels;
+            const elapsed = (Date.now() - startTime) / 1000;
+            const estimatedSpeed = pixelsProcessed / elapsed;
+
+            document.getElementById('stat-pixels').textContent = `${pixelsProcessed.toLocaleString()} / ${totalPixels.toLocaleString()}`;
+            document.getElementById('stat-bytes').textContent = formatBytes(byteIndex);
+            document.getElementById('stat-progress').textContent = Math.round(progress * 100) + '%';
+            document.getElementById('stat-speed').textContent = Math.round(estimatedSpeed).toLocaleString() + ' px/s';
+
+            ctx.putImageData(imgData, 0, 0);
+
+            if(byteIndex < totalBytes){
+                animationFrame = requestAnimationFrame(processChunk);
+            } else {
+                resolve();
+            }
+        }
+        processChunk();
+    });
+}
+
+
+/* -------------------------------------------------
+   DOWNLOAD THE GENERATED PNG
+--------------------------------------------------- */
+function downloadImage(){
+    if(!generatedBlob) return;
+    const outputName = document.getElementById('output-name').value || 'compressed.png';
+    const url = URL.createObjectURL(generatedBlob);
+    const a = document.createElement('a');
+    a.href = url; a.download = outputName;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/* -------------------------------------------------
+   EXTRACTION LOGIC WITH VISUAL ANIMATION
+--------------------------------------------------- */
+async function startExtract(){
+    if (!selectedPNG || isProcessing) return;
+    isProcessing = true;
+
+    document.getElementById('extract-start').disabled = true;
+    const progSec = document.getElementById('extract-progress');
+    progSec.classList.add('active');
+    updateProgress('extract', 5, 'Loading PNG');
+
+    try {
+        // Load PNG file into ImageData
+        const img = await loadImage(selectedPNG);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const src = imgData.data;
+
+        updateProgress('extract', 25, 'Reading header');
+
+        // Extract header info
+        const flag = src[0];
+        const lenBytes = new Uint8Array(4);
+        lenBytes[0] = src[1];
+        lenBytes[1] = src[2];
+        lenBytes[2] = src[3];
+        lenBytes[3] = src[4];
+        const dataLength = new DataView(lenBytes.buffer).getUint32(0, false);
+
+        updateProgress('extract', 45, 'Extracting payload');
+
+        // Decode payload instantly (no animation)
+        const payload = new Uint8Array(dataLength);
+        let srcIdx = 5;
+        for (let i = 0; i < dataLength; i++) {
+            const pixelIdx = Math.floor(srcIdx / 4);
+            const channel = srcIdx % 4;
+            if (channel === 3) { // skip alpha
+                srcIdx++;
+            }
+            payload[i] = src[srcIdx++];
+        }
+
+        let zipBytes = payload;
+
+        // Handle decryption if file was encrypted
+        if (flag === 1) {
+            const password = document.getElementById('extract-pass').value.trim();
+            if (!password) {
+                throw new Error('File is encrypted – password required');
+            }
+            updateProgress('extract', 65, 'Decrypting');
+            zipBytes = await decryptData(payload, password);
+        }
+
+        updateProgress('extract', 80, 'Reading archive');
+
+        // Load ZIP from bytes
+        pendingZip = await JSZip.loadAsync(zipBytes);
+        pendingPayload = zipBytes;
+
+        // Show file list in modal
+        const listEl = document.getElementById('preview-list');
+        listEl.innerHTML = Object.keys(pendingZip.files)
+            .filter(name => !pendingZip.files[name].dir)
+            .map(name => `<li>${name} – ${formatBytes(pendingZip.files[name]._data.uncompressedSize)}</li>`)
+            .join('');
+
+        updateProgress('extract', 100, 'Ready');
+        document.getElementById('preview-modal').classList.add('show');
+    } catch (err) {
+        alert('Extraction failed: ' + err.message);
+        resetExtractUI();
+    } finally {
+        isProcessing = false;
+    }
+}
+
+
+/* -------------------------------------------------
+   ANIMATED DECODING FUNCTION
+--------------------------------------------------- */
+async function decodeWithAnimation(src, dataLength, canvas, ctx){
+    const payload = new Uint8Array(dataLength);
+    const batchSize = isMobile ? 500 : 200;
+    const startTime = Date.now();
+    const totalPixels = Math.ceil(dataLength / 3);
+    
+    return new Promise(resolve=>{
+        let srcIdx = 5;
+        let dstIdx = 0;
+        
+        function processChunk(){
+            const chunkEnd = Math.min(dstIdx + batchSize, dataLength);
+            
+            for(let i=dstIdx; i<chunkEnd; i++){
+                const pixelIdx = Math.floor(srcIdx/3);
+                const channel = srcIdx%3;
+                payload[i] = src[pixelIdx*4 + channel];
+                srcIdx++;
+            }
+            
+            dstIdx = chunkEnd;
+            const progress = (dstIdx / dataLength) * 100;
+            
+            const elapsed = (Date.now() - startTime) / 1000;
+            const pixelsProcessed = Math.floor(dstIdx / 3);
+            const speed = Math.round(pixelsProcessed / elapsed);
+            document.getElementById('stat-pixels').textContent = pixelsProcessed.toLocaleString() + ' / ' + totalPixels.toLocaleString();
+            document.getElementById('stat-bytes').textContent = formatBytes(dstIdx);
+            document.getElementById('stat-progress').textContent = Math.round(progress) + '%';
+            document.getElementById('stat-speed').textContent = speed.toLocaleString() + ' px/s';
+            
+            if(dstIdx < dataLength){
+                animationFrame = requestAnimationFrame(processChunk);
+            }else{
+                resolve(payload);
+            }
+        }
+        
+        processChunk();
+    });
+}
+
+/* -------------------------------------------------
+   CONFIRM / CANCEL HANDLERS FOR PREVIEW MODAL
+--------------------------------------------------- */
+function closePreview(){
+    document.getElementById('preview-modal').classList.remove('show');
+    resetExtractUI();
+}
+function confirmExtraction(){
+    document.getElementById('preview-modal').classList.remove('show');
+    extractAllFiles();
+}
+
+
+/* -------------------------------------------------
+   EXTRACT ALL FILES – now creates ONE ZIP for download
+--------------------------------------------------- */
+async function extractAllFiles(){
+    try{
+        updateProgress('extract',85,'Creating output ZIP');
+
+        const outZip = new JSZip();
+        for(const name of Object.keys(pendingZip.files)){
+            const fileObj = pendingZip.files[name];
+            if (fileObj.dir) continue;
+            const content = await fileObj.async('uint8array');
+            outZip.file(name, content);
+        }
+
+        const zipBlob = await outZip.generateAsync({
+            type:'blob',
+            compression:'DEFLATE',
+            compressionOptions:{level:6}
+        });
+
+        const zipName = (document.getElementById('output-name').value || 'extracted-files') + '.zip';
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = zipName;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        updateProgress('extract',100,'Done');
+        setTimeout(()=>resetExtractUI(),1500);
+    }catch(err){
+        alert('Extraction failed during download: '+err.message);
+        resetExtractUI();
+    }
+}
+
+/* -------------------------------------------------
+   UI RESET AFTER EXTRACT (helper)
+--------------------------------------------------- */
+function resetExtractUI(){
+    selectedPNG = null;
+    pendingZip = null;
+    pendingPayload = null;
+    document.getElementById('png-input').value = '';
+    document.getElementById('extract-pass').value = '';
+    document.getElementById('extract-start').disabled = true;
+    document.getElementById('extract-progress').classList.remove('active');
+    document.getElementById('png-info').classList.remove('show');
+    document.getElementById('png-details').innerHTML = '';
+}
+
+/* -------------------------------------------------
+   UI PROGRESS HELPER
+--------------------------------------------------- */
+function updateProgress(type, percent, status){
+    document.getElementById(`${type}-status`).textContent = status;
+    document.getElementById(`${type}-percent`).textContent = Math.round(percent)+' %';
+    document.getElementById(`${type}-bar`).style.width = percent+'%';
+}
+
+/* -------------------------------------------------
+   ENCRYPTION / DECRYPTION (AES-GCM, PBKDF2)
+--------------------------------------------------- */
+async function encryptData(data,password){
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await crypto.subtle.deriveKey(
+        {name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},
+        keyMaterial,
+        {name:'AES-GCM',length:256},
+        false,
+        ['encrypt']
+    );
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt({name:'AES-GCM',iv},key,data);
+    const out = new Uint8Array(salt.length+iv.length+ciphertext.byteLength);
+    out.set(salt,0);
+    out.set(iv,salt.length);
+    out.set(new Uint8Array(ciphertext),salt.length+iv.length);
+    return out;
+}
+
+async function decryptData(data,password){
+    const enc = new TextEncoder();
+    const salt = data.slice(0,16);
+    const iv   = data.slice(16,28);
+    const ct   = data.slice(28);
+    const keyMaterial = await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
+    const key = await crypto.subtle.deriveKey(
+        {name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},
+        keyMaterial,
+        {name:'AES-GCM',length:256},
+        false,
+        ['decrypt']
+    );
+    const plain = await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+    return new Uint8Array(plain);
+}
+
+/* -------------------------------------------------
+   IMAGE LOADER
+--------------------------------------------------- */
+function loadImage(file){
+    return new Promise((res,rej)=>{
+        const img = new Image();
+        img.onload = ()=>{ URL.revokeObjectURL(img.src); res(img); };
+        img.onerror = rej;
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+/* -------------------------------------------------
+   BYTE FORMATTER
+--------------------------------------------------- */
+function formatBytes(b){
+    if(b===0) return '0 B';
+    const k=1024;
+    const sizes=['B','KB','MB','GB','TB'];
+    const i=Math.floor(Math.log(b)/Math.log(k));
+    return (b/k**i).toFixed(2)+' '+sizes[i];
+}
+</script>
+</body>
+</html>

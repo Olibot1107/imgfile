@@ -1,6 +1,9 @@
-# File Compressor - Version 8.4
+# File Compressor - Version 8.5
 
 A high-performance tool for compressing folders into PNG images and extracting them back. Includes CLI, GUI, and a production-ready REST API server.
+
+## we have a web version too https://olibot1107-good-projects.github.io/imgfile/
+do not use files that are made on the app version on the web version and do not use files that are made on the web version on the app version
 
 ## Features
 
