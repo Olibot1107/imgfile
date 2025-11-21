@@ -6,6 +6,7 @@ import logging
 import tempfile
 import zipfile
 import threading
+import hmac
 from functools import wraps
 from flask import Flask, request, jsonify, send_file
 from flask_compress import Compress
@@ -31,6 +32,7 @@ Compress(app)  # Enable gzip compression for responses
 
 # Load API key from environment variable
 API_KEY = os.environ.get('API_KEY', None)
+app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024 # lets not get DOSd gng
 
 if API_KEY:
     logger.info("API authentication enabled")
@@ -51,8 +53,8 @@ def require_api_key(f):
         if not provided_key:
             logger.warning(f"Unauthorized access attempt from {request.remote_addr}")
             return jsonify({'error': 'API key required. Provide X-API-Key header.'}), 401
-        
-        if provided_key != API_KEY:
+        # some skinny twat could try and find the key based on timings so
+        if not hmac.compare_digest(provided_key, API_KEY):
             logger.warning(f"Invalid API key from {request.remote_addr}")
             return jsonify({'error': 'Invalid API key'}), 401
         
@@ -96,7 +98,11 @@ def compress_folder():
             return jsonify({'error': 'No files provided'}), 400
         
         files = request.files.getlist('files')
+        ALLOWED = {'zlib','lzma','bz2','zip_lzma','zip_bz2'}
         compression_method = request.form.get('compression_method', 'zlib')  # Changed default to zlib for speed
+        if compression_method not in ALLOWED:
+            return jsonify({'error':'invalid compression method'}), 400 # we ant blindly accepting the method gng
+
         enable_limit = request.form.get('enable_limit', 'true').lower() == 'true'
         password = request.form.get('password', None)
         
@@ -114,6 +120,7 @@ def compress_folder():
             if file.filename:
                 filepath = secure_filename(file.filename)
                 filepath = filepath.replace('/', os.sep)
+                filepath = os.path.basename(filepath) # they aint getting past this shi
                 full_path = os.path.join(input_dir, filepath)
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)
                 file.save(full_path)
@@ -163,7 +170,9 @@ def compress_folder():
     except Exception as e:
         logger.error(f"Error during compression: {e}", exc_info=True)
         cleanup_temp_dir_async(temp_dir)
-        return jsonify({'error': str(e)}), 500
+        # cant expose the errors to these bitches
+        return jsonify({'error': 'Internal Server Error'}), 500
+        
 
 @app.route('/api/extract', methods=['POST'])
 @require_api_key
@@ -266,11 +275,13 @@ def get_info():
         file.save(temp_png)
         
         from PIL import Image
-        
+        Image.MAX_IMAGE_PIXELS = 50_000_000 # lets not get image bombed gng
         folder_name, file_count, total_size, compression_method, password_info, metadata_channels = get_decode_info(temp_png)
         
         img = Image.open(temp_png)
-        width, height = img.size
+        img.verify()
+        with Image.open(temp_png) as img: # lets us not decode the whole fuckass image
+            width, height = img.size
         
         cleanup_temp_dir_async(temp_dir)
         
