@@ -37,7 +37,11 @@ limiter = Limiter(app, key_func=get_remote_address)
 
 # Load API key from environment variable
 API_KEY = os.environ.get('API_KEY', None)
-app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024 # lets not get DOSd gng
+RATE_LIMIT = os.environ.get('RATE_LIMIT', '1 per 5 seconds')
+
+# Set limits only if no API key (unauthenticated access)
+if not API_KEY:
+    app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # Prevent DOS attacks
 
 if API_KEY:
     logger.info("API authentication enabled")
@@ -87,7 +91,7 @@ def cleanup_temp_dir_async(temp_dir):
     thread.start()
 
 @app.route('/api/compress', methods=['POST'])
-@limiter.limit("1 per 5 seconds")
+@limiter.limit(RATE_LIMIT)
 @require_api_key
 def compress_folder():
     """
@@ -181,7 +185,7 @@ def compress_folder():
         
 
 @app.route('/api/extract', methods=['POST'])
-@limiter.limit("1 per 5 seconds")
+@limiter.limit(RATE_LIMIT)
 @require_api_key
 def extract_png():
     """
@@ -264,7 +268,7 @@ def extract_png():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/info', methods=['POST'])
-@limiter.limit("1 per 5 seconds")
+@limiter.limit(RATE_LIMIT)
 @require_api_key
 def get_info():
     """
@@ -283,7 +287,8 @@ def get_info():
         file.save(temp_png)
         
         from PIL import Image
-        Image.MAX_IMAGE_PIXELS = 50_000_000 # lets not get image bombed gng
+        if not API_KEY:
+            Image.MAX_IMAGE_PIXELS = 50_000_000  # Prevent image bomb attacks on unauthenticated access
         folder_name, file_count, total_size, compression_method, password_info, metadata_channels = get_decode_info(temp_png)
         
         img = Image.open(temp_png)
@@ -311,7 +316,7 @@ def get_info():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/methods', methods=['GET'])
-@limiter.limit("1 per 5 seconds")
+@limiter.limit(RATE_LIMIT)
 def get_compression_methods():
     """Get available compression methods"""
     methods = [
