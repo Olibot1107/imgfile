@@ -11,6 +11,8 @@ from functools import wraps
 from flask import Flask, request, jsonify, send_file
 from flask_compress import Compress
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
 from encoder import encode_folder_to_png
 from decoder import decode_png_to_folder, get_decode_info
@@ -29,6 +31,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 Compress(app)  # Enable gzip compression for responses
+
+# Rate limiting: 1 request per 5 seconds per IP
+limiter = Limiter(app, key_func=get_remote_address)
 
 # Load API key from environment variable
 API_KEY = os.environ.get('API_KEY', None)
@@ -82,6 +87,7 @@ def cleanup_temp_dir_async(temp_dir):
     thread.start()
 
 @app.route('/api/compress', methods=['POST'])
+@limiter.limit("1 per 5 seconds")
 @require_api_key
 def compress_folder():
     """
@@ -175,6 +181,7 @@ def compress_folder():
         
 
 @app.route('/api/extract', methods=['POST'])
+@limiter.limit("1 per 5 seconds")
 @require_api_key
 def extract_png():
     """
@@ -257,6 +264,7 @@ def extract_png():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/info', methods=['POST'])
+@limiter.limit("1 per 5 seconds")
 @require_api_key
 def get_info():
     """
@@ -303,6 +311,7 @@ def get_info():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/methods', methods=['GET'])
+@limiter.limit("1 per 5 seconds")
 def get_compression_methods():
     """Get available compression methods"""
     methods = [

@@ -5,4 +5,5 @@ colorama
 flask
 flask-cors
 flask-compress
+flask-limiter
 werkzeug
